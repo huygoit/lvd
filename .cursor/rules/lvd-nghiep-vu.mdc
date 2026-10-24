@@ -1,0 +1,14 @@
+---
+description: Bản nền nghiệp vụ và bộ chứng từ Excel của Liên Việt Door
+alwaysApply: true
+---
+
+Trước khi thiết kế hoặc sửa nghiệp vụ, đọc các nguồn trong `prompts/`:
+
+- `LVD-baseline-nghiep-vu-2026-10-22.md` là bản nền ưu tiên.
+- `LVD-bo-chung-tu-hop-nhat-2026.md` là chứng từ thi công trên Excel.
+- `LVD-mau-hop-dong-mua-ban-2026.md` là hợp đồng mua bán.
+
+Hợp đồng có ba loại đã xác nhận: thi công, mua bán, và mẫu khách hàng đưa. Không gộp ba loại thành một mẫu.
+
+Xác nhận mới của người dùng đứng trước phản hồi khách, rồi tới Excel, rồi tới đề xuất cũ. Không lấy dòng mẫu trong Excel làm dữ liệu thật. Không coi một giá trên báo giá hoặc cây khách hàng–công trình hiện tại là mô hình đã chốt.

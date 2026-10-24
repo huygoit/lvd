@@ -1,0 +1,846 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Staff {
+  id           String      @id @default(cuid())
+  name         String
+  phone        String      @default("")
+  email        String      @default("")
+  note         String      @default("")
+  active       Boolean     @default(true)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  positionId   String?
+  position     Position?   @relation(fields: [positionId], references: [id])
+  roleLinks    UserRole[]
+  loginAccount LoginAccount?
+
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([active])
+}
+
+model LoginAccount {
+  id           String   @id
+  username     String   @unique
+  name         String
+  passwordHash String
+  active       Boolean  @default(true)
+  staff        Staff    @relation(fields: [id], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Role {
+  id           String     @id
+  name         String     @unique
+  description  String     @default("")
+  active       Boolean    @default(true)
+  capabilities String[]
+  members      UserRole[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   Staff  @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model CompanyProfile {
+  id             String @id
+  name           String
+  taxCode        String @default("")
+  address        String @default("")
+  phone          String @default("")
+  email          String @default("")
+  representativeName String @default("")
+  defaultTaxBps  Int    @default(1000)
+}
+
+model CodeSequence {
+  id         String @id @default(cuid())
+  key        String
+  year       Int
+  lastNumber Int    @default(0)
+
+  @@unique([key, year])
+}
+
+model Customer {
+  id                   String   @id @default(cuid())
+  code                 String   @unique
+  type                 String
+  name                 String
+  shortName            String   @default("")
+  taxCode              String   @default("")
+  phone                String   @default("")
+  // Số fax, chỉ chữ số, được để trống.
+  fax                  String   @default("")
+  // Số điện thoại liên lạc, khác số điện thoại ghi cạnh fax.
+  altPhone             String   @default("")
+  // Email liên lạc, khác email nhận hóa đơn.
+  email                String   @default("")
+  // Địa chỉ liên lạc, khác địa chỉ đăng ký kinh doanh.
+  address              String   @default("")
+  invoiceName          String   @default("")
+  invoiceTaxCode       String   @default("")
+  // Địa chỉ đăng ký kinh doanh của công ty.
+  invoiceAddress       String   @default("")
+  invoiceEmail         String   @default("")
+  representativeName   String   @default("")
+  representativeTitle  String   @default("")
+  // Người thực hiện hợp đồng, khác người đại diện.
+  executorName         String   @default("")
+  // Chức vụ của người thực hiện hợp đồng.
+  executorTitle        String   @default("")
+  ownerId              String
+  source               String   @default("")
+  note                 String   @default("")
+  status               String   @default("dang_dung")
+  revision             Int      @default(1)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  contacts             CustomerContact[]
+  bankAccounts         CustomerBankAccount[]
+  projects             Project[]
+  quotations           Quotation[]
+  contracts            Contract[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([taxCode])
+}
+
+model CustomerContact {
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name       String
+  role       String    @default("")
+  phone      String    @default("")
+  email      String    @default("")
+  note       String    @default("")
+  isPrimary  Boolean   @default(false)
+
+  @@index([customerId])
+}
+
+model CustomerBankAccount {
+  id            String   @id @default(cuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  bankName      String
+  accountNumber String
+  isPrimary     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@unique([customerId, accountNumber])
+  @@index([customerId])
+}
+
+model Project {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  name       String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  location   String   @default("")
+  // Dự án và gói thầu là thông tin ghi trên hồ sơ, chưa phải danh mục riêng.
+  venture    String   @default("")
+  bidPackage String   @default("")
+  startedOn  String   @default("")
+  endedOn    String   @default("")
+  // Thuế GTGT, đúng số nguyên người dùng nhập. Để trống khi chưa nhập. Không phải basis point.
+  vatPercent Int?
+  ownerId    String
+  note       String   @default("")
+  stage      String   @default("dang_khao_sat")
+  revision   Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  quotations Quotation[]
+  contracts  Contract[]
+  stockSlips StockSlip[]
+  items      ProjectItem[]
+  orders     ProjectOrder[]
+  costs      ProjectCost[]
+  supplyRequests FieldSupplyRequest[]
+  progressReports FieldProgressReport[]
+
+  @@index([customerId])
+  @@index([ownerId])
+}
+
+// Phiếu đội thi công xin vật tư. Chưa phải phiếu kho và chưa trừ tồn.
+model FieldSupplyRequest {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  requesterId String
+  neededOn    String   @default("")
+  note        String   @default("")
+  status      String   @default("da_gui")
+  createdAt   DateTime @default(now())
+  lines       FieldSupplyRequestLine[]
+
+  @@index([projectId])
+  @@index([requesterId])
+  @@index([createdAt])
+}
+
+model FieldSupplyRequestLine {
+  id            String             @id @default(cuid())
+  requestId     String
+  request       FieldSupplyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  sortOrder     Int
+  materialId    String             @default("")
+  materialCode  String             @default("")
+  name          String
+  unit          String
+  quantityMilli Int
+  note          String             @default("")
+
+  @@index([requestId])
+}
+
+// Báo cáo tiến độ của chỉ huy. Khối lượng đã làm là số tích lũy, không sửa hạng mục và không đổi hợp đồng.
+model FieldProgressReport {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id])
+  reporterId String
+  reportedOn String
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+  lines      FieldProgressLine[]
+
+  @@index([projectId])
+  @@index([reporterId])
+  @@index([createdAt])
+}
+
+model FieldProgressLine {
+  id           String              @id @default(cuid())
+  reportId     String
+  report       FieldProgressReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  itemId       String
+  sortOrder    Int
+  name         String
+  spec         String              @default("")
+  unit         String
+  plannedMilli Int
+  doneMilli    Int
+  note         String              @default("")
+
+  @@index([reportId])
+  @@index([itemId])
+}
+
+// Hạng mục của công trình. Đơn giá ở đây chưa phải giá ký hay giá quản trị của hợp đồng.
+model ProjectItem {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sortOrder     Int
+  name          String
+  spec          String   @default("")
+  unit          String
+  quantityMilli Int      @default(0)
+  unitPrice     Int      @default(0)
+  ownerId       String
+  note          String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([projectId, sortOrder])
+  @@index([projectId])
+  @@index([ownerId])
+}
+
+// Chi phí phát sinh của công trình. Chưa phải hóa đơn, công nợ hay phần phân bổ.
+model ProjectCost {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  occurredOn String
+  category   String
+  content    String
+  // Số tiền đồng. Để trống không được. Không suy ra thuế.
+  amount     BigInt
+  payerId    String
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([payerId])
+  @@index([occurredOn])
+}
+
+// Đơn mua nhà cung cấp đã bốc sẵn. Chưa phải hàng đã nhận tại công trình.
+model ProjectOrder {
+  id           String             @id @default(cuid())
+  code         String             @unique
+  projectId    String
+  project      Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  partnerId    String?
+  partner      Partner?           @relation(fields: [partnerId], references: [id])
+  supplierName String             @default("")
+  supplierAddress String          @default("")
+  supplierPhone String            @default("")
+  supplierBankName String         @default("")
+  supplierAccountNumber String    @default("")
+  supplierWebsite String          @default("")
+  supplierEmail String            @default("")
+  supplierTaxCode String          @default("")
+  supplierRepresentativeName String @default("")
+  supplierRepresentativeTitle String @default("")
+  kind         String
+  status       String             @default("cho_xem")
+  fileName     String             @default("")
+  storedName   String             @default("")
+  headerNote   String             @default("")
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  lines        ProjectOrderLine[]
+  deliveries   StockSlip[]
+
+  @@index([projectId])
+  @@index([partnerId])
+  @@index([status])
+}
+
+model ProjectOrderLine {
+  id            String       @id @default(cuid())
+  orderId       String
+  order         ProjectOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sortOrder     Int
+  materialId    String?
+  materialCode  String
+  name          String
+  spec          String       @default("")
+  unit          String       @default("")
+  colorCode     String       @default("")
+  barCount      Int          @default(0)
+  lengthMm      Int          @default(0)
+  gramsPerMeter Int          @default(0)
+  totalGrams    Int          @default(0)
+  quantityMilli Int          @default(0)
+  unitPrice     Int          @default(0)
+  taxBps        Int          @default(0)
+
+  @@index([orderId])
+  @@index([materialId])
+}
+
+model Quotation {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id])
+  createdAt  DateTime @default(now())
+  versions   QuotationVersion[]
+
+  @@index([customerId])
+  @@index([projectId])
+}
+
+model QuotationVersion {
+  id                    String   @id @default(cuid())
+  quotationId           String
+  quotation             Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  number                Int
+  sourceVersionId       String?
+  copiedFromVersionId   String?
+  changeReason          String   @default("")
+  title                 String   @default("")
+  quoteDate             String
+  validUntil            String
+  authorId              String
+  ownerId               String
+  receiverName          String   @default("")
+  receiverTitle         String   @default("")
+  receiverPhone         String   @default("")
+  receiverEmail         String   @default("")
+  scheduleText          String   @default("")
+  paymentTerms          String   @default("")
+  deliveryTerms         String   @default("")
+  warrantyTerms         String   @default("")
+  includedScope         String   @default("")
+  excludedScope         String   @default("")
+  note                  String   @default("")
+  customerName          String   @default("")
+  customerTaxCode       String   @default("")
+  customerAddress       String   @default("")
+  customerPhone         String   @default("")
+  customerEmail         String   @default("")
+  projectName           String   @default("")
+  projectLocation       String   @default("")
+  companyName           String   @default("")
+  companyTaxCode        String   @default("")
+  companyAddress        String   @default("")
+  companyPhone          String   @default("")
+  companyEmail          String   @default("")
+  representativeName    String   @default("")
+  taxBps                Int      @default(1000)
+  warrantyMonths        Int      @default(0)
+  advanceAmount         Int      @default(0)
+  advanceDays           Int      @default(0)
+  paymentDays           Int      @default(0)
+  internalStatus        String   @default("nhap")
+  customerStatus        String   @default("chua_gui")
+  acceptedOn            String?
+  revision              Int      @default(1)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  items                 QuotationItem[]
+  approvals             QuotationApproval[]
+  deliveries            QuotationDelivery[]
+  responses             QuotationResponse[]
+  contract              Contract?
+
+  @@unique([quotationId, number])
+  @@index([ownerId])
+  @@index([internalStatus])
+  @@index([customerStatus])
+}
+
+model QuotationItem {
+  id                  String @id @default(cuid())
+  versionId           String
+  version             QuotationVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  sourceItemId        String?
+  sortOrder           Int
+  groupKey            String
+  positionCode        String @default("")
+  name                String
+  spec                String @default("")
+  unit                String @default("bộ")
+  calcMethod          String
+  widthMm             Int?
+  heightMm            Int?
+  lengthMm            Int?
+  quantity            Int
+  mainUnitPrice       Int
+  accessorySeparate   Boolean @default(false)
+  accessoryUnitPrice  Int     @default(0)
+  discountMode        String  @default("khong")
+  discountBps         Int     @default(0)
+  discountAmount      Int     @default(0)
+  taxMode             String
+  taxBps              Int     @default(0)
+  mainAmount          Int
+  accessoryAmount     Int
+  discountValue       Int
+  pretax              Int
+  taxAmount           Int?
+  posttax             Int
+  note                String @default("")
+
+  @@index([versionId])
+}
+
+model QuotationApproval {
+  id        String   @id @default(cuid())
+  versionId String
+  version   QuotationVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  action    String
+  actorId   String
+  reason    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([versionId])
+}
+
+model QuotationDelivery {
+  id            String   @id @default(cuid())
+  versionId     String
+  version       QuotationVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  sentAt        DateTime @default(now())
+  actorId       String
+  recipientName String
+  channel       String
+  note          String   @default("")
+
+  @@index([versionId])
+}
+
+model QuotationResponse {
+  id            String   @id @default(cuid())
+  versionId     String
+  version       QuotationVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  status        String
+  actorId       String
+  occurredOn    String
+  confirmerName String   @default("")
+  note          String   @default("")
+  replacesId    String?
+  createdAt     DateTime @default(now())
+
+  @@index([versionId])
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String
+  fileName    String
+  storedName  String
+  mime        String
+  size        Int
+  locked      Boolean  @default(false)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model QuoteCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  unit      String   @default("bộ")
+  sortOrder Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JobTitle {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  staff     Staff[]
+}
+
+model Position {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  staff     Staff[]
+}
+
+model Contract {
+  id                  String   @id @default(cuid())
+  code                String   @unique
+  signedNumber        String   @default("")
+  kind                String
+  name                String
+  projectId           String
+  project             Project  @relation(fields: [projectId], references: [id])
+  customerId          String
+  customer            Customer @relation(fields: [customerId], references: [id])
+  quotationVersionId  String?  @unique
+  quotationVersion    QuotationVersion? @relation(fields: [quotationVersionId], references: [id])
+  internalStatus      String   @default("nhap")
+  signStatus          String   @default("chua_ky")
+  effectStatus        String   @default("chua_hieu_luc")
+  executionStatus     String   @default("chua_trien_khai")
+  priceBasis          String   @default("chua_xac_nhan")
+  signedOn            String?
+  effectiveOn         String?
+  ownerId             String
+  declaredSignedTotal Int?
+  declaredAdminTotal  Int?
+  scopeText           String   @default("")
+  paymentText         String   @default("")
+  warrantyText        String   @default("")
+  note                String   @default("")
+  revision            Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  lines               ContractLine[]
+  milestones          ContractMilestone[]
+  payments            ContractPayment[]
+  changes             ContractChange[]
+
+  @@index([projectId])
+  @@index([customerId])
+  @@index([ownerId])
+}
+
+model ContractLine {
+  id              String         @id @default(cuid())
+  contractId      String
+  contract        Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  parentId        String?
+  parent          ContractLine?  @relation("CayPhamVi", fields: [parentId], references: [id])
+  children        ContractLine[] @relation("CayPhamVi")
+  kind            String
+  code            String         @default("")
+  name            String
+  unit            String         @default("bộ")
+  widthMm         Int?
+  heightMm        Int?
+  quantity        Int?
+  signedUnitPrice Int?
+  adminUnitPrice  Int?
+  taxBps          Int?
+  sortOrder       Int
+  note            String         @default("")
+
+  @@index([contractId])
+  @@index([parentId])
+}
+
+model ContractMilestone {
+  id         String   @id @default(cuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  name       String
+  planOn     String?
+  actualOn   String?
+  note       String   @default("")
+  sortOrder  Int
+
+  @@index([contractId])
+}
+
+model ContractPayment {
+  id         String   @id @default(cuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  name       String
+  basis      String   @default("chua_xac_nhan")
+  amount     Int?
+  percentBps Int?
+  note       String   @default("")
+  sortOrder  Int
+
+  @@index([contractId])
+}
+
+model ContractChange {
+  id            String   @id @default(cuid())
+  contractId    String
+  contract      Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  lineId        String?
+  title         String
+  reason        String   @default("")
+  deltaQuantity Int?
+  status        String   @default("nhap")
+  createdAt     DateTime @default(now())
+
+  @@index([contractId])
+}
+
+model Partner {
+  id                  String   @id @default(cuid())
+  code                String   @unique
+  name                String
+  shortName           String   @default("")
+  taxCode             String   @default("")
+  phone               String   @default("")
+  email               String   @default("")
+  website             String   @default("")
+  bankName            String   @default("")
+  accountNumber       String   @default("")
+  address             String   @default("")
+  representativeName  String   @default("")
+  representativeTitle String   @default("")
+  note                String   @default("")
+  status              String   @default("dang_dung")
+  revision            Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  roles               PartnerRole[]
+  contacts            PartnerContact[]
+  stockSlips          StockSlip[]
+  orders              ProjectOrder[]
+
+  @@index([status])
+  @@index([taxCode])
+}
+
+model PartnerRole {
+  id        String  @id @default(cuid())
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  role      String
+
+  @@unique([partnerId, role])
+  @@index([role])
+}
+
+model PartnerContact {
+  id        String  @id @default(cuid())
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  name      String
+  title     String  @default("")
+  phone     String  @default("")
+  email     String  @default("")
+  note      String  @default("")
+  isPrimary Boolean @default(false)
+
+  @@index([partnerId])
+}
+
+model Material {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  groupName        String
+  supplierCode     String   @default("")
+  supplierItemCode String   @default("")
+  otherCode        String   @default("")
+  spec             String   @default("")
+  color            String   @default("")
+  stockUnit        String
+  priceBasis       String
+  barLengthMm      Int?
+  gramsPerMeter    Int?
+  gramsPerBar      Int?
+  taxBps           Int      @default(0)
+  referencePrice   Int?
+  invoiceName      String   @default("")
+  nature           String   @default("vat_tu")
+  note             String   @default("")
+  revision         Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  slipLines        StockSlipLine[]
+  moves            StockMove[]
+
+  @@index([groupName])
+  @@index([priceBasis])
+}
+
+model StockSlip {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  kind      String
+  status    String    @default("nhap")
+  slipNo    String    @default("")
+  partnerId String?
+  partner   Partner?  @relation(fields: [partnerId], references: [id])
+  projectId String?
+  project   Project?  @relation(fields: [projectId], references: [id])
+  orderId   String?
+  order     ProjectOrder? @relation(fields: [orderId], references: [id])
+  fromKind  String    @default("")
+  fromRef   String    @default("")
+  toKind    String    @default("")
+  toRef     String    @default("")
+  reason    String    @default("")
+  note      String    @default("")
+  revision  Int       @default(1)
+  postedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  lines     StockSlipLine[]
+  moves     StockMove[]
+  photos    StockSlipPhoto[]
+
+  @@index([kind])
+  @@index([status])
+  @@index([projectId])
+  @@index([partnerId])
+  @@index([orderId])
+}
+
+// Ảnh nhận hàng tại công trình. Chỉ lưu tệp, không đọc chữ trong ảnh.
+model StockSlipPhoto {
+  id         String    @id @default(cuid())
+  slipId     String
+  slip       StockSlip @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  storedName String
+  createdAt  DateTime  @default(now())
+
+  @@index([slipId])
+}
+
+model StockSlipLine {
+  id          String    @id @default(cuid())
+  slipId      String
+  slip        StockSlip @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  materialId  String
+  material    Material  @relation(fields: [materialId], references: [id])
+  documentQty  Int
+  receivedQty  Int
+  receiveState String @default("")
+  barCount     Int    @default(0)
+  lengthMm     Int?
+  invoiceGrams Int    @default(0)
+  weighedGrams Int    @default(0)
+  theoryGrams  Int    @default(0)
+  note         String @default("")
+  sortOrder    Int
+
+  @@index([slipId])
+  @@index([materialId])
+}
+
+model StockMove {
+  id         String    @id @default(cuid())
+  slipId     String
+  slip       StockSlip @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  lineId     String
+  materialId String
+  material   Material  @relation(fields: [materialId], references: [id])
+  placeKind  String
+  placeRef   String    @default("")
+  direction  String
+  qty        Int
+  createdAt  DateTime  @default(now())
+
+  @@index([materialId, placeKind, placeRef])
+  @@index([slipId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  summary    String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// Thông báo theo từng người. Khác với việc cần xử lý trên tổng quan.
+model Notice {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  body      String    @default("")
+  href      String    @default("")
+  kind      String    @default("giao")
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}

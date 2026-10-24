@@ -1,0 +1,107 @@
+import type { Capability } from "@/shared/auth/types";
+
+const quanTri: Capability[] = [
+  "customers.view",
+  "customers.create",
+  "customers.update",
+  "customers.archive",
+  "customers.contacts",
+  "projects.view",
+  "projects.create",
+  "projects.update",
+  "quotations.view",
+  "quotations.create",
+  "quotations.update",
+  "quotations.submit",
+  "quotations.withdraw",
+  "quotations.approve",
+  "quotations.request_change",
+  "quotations.deliver",
+  "quotations.respond",
+  "quotations.version",
+  "quotations.copy",
+  "contracts.view",
+  "contracts.create",
+  "contracts.update",
+  "contracts.submit",
+  "contracts.approve",
+  "contracts.sign",
+  "contracts.effect",
+  "engineering.view",
+  "procurement.view",
+  "partners.view",
+  "partners.create",
+  "partners.update",
+  "partners.archive",
+  "inventory.view",
+  "inventory.create",
+  "inventory.update",
+  "orders.confirm",
+  "fabrication.view",
+  "installation.view",
+  "quality.view",
+  "finance.cashflow.view",
+  "finance.receivables.view",
+  "reports.view",
+  "system.view",
+  "settings.manage",
+];
+
+const kinhDoanh: Capability[] = [
+  "customers.view.assigned",
+  "customers.create",
+  "customers.update",
+  "customers.archive",
+  "customers.contacts",
+  "projects.view.assigned",
+  "projects.create",
+  "projects.update",
+  "quotations.view.assigned",
+  "quotations.create",
+  "quotations.update",
+  "quotations.submit",
+  "quotations.withdraw",
+  "quotations.deliver",
+  "quotations.respond",
+  "quotations.version",
+  "quotations.copy",
+  "contracts.view.assigned",
+  "contracts.create",
+  "contracts.update",
+  "contracts.submit",
+  "contracts.sign",
+];
+
+const kyThuat: Capability[] = ["projects.view.assigned", "engineering.view", "orders.confirm"];
+
+export const defaultRoles: Array<{
+  id: string;
+  name: string;
+  description: string;
+  capabilities: Capability[];
+}> = [
+  {
+    id: "vai-tro-quan-tri",
+    name: "Quản trị hệ thống",
+    description: "Điều hành danh mục và các phân hệ đang mở. Không gồm giá quản trị trên hợp đồng.",
+    capabilities: quanTri,
+  },
+  {
+    id: "vai-tro-kinh-doanh",
+    name: "Kinh doanh",
+    description: "Làm khách hàng, công trình, báo giá và hợp đồng do mình phụ trách.",
+    capabilities: kinhDoanh,
+  },
+  {
+    id: "vai-tro-ky-thuat",
+    name: "Kỹ thuật",
+    description: "Xem công trình được giao và phân hệ thiết kế.",
+    capabilities: kyThuat,
+  },
+];
+
+export const defaultMembers = [
+  { userId: "minh", roleId: "vai-tro-quan-tri" },
+  { userId: "ha", roleId: "vai-tro-kinh-doanh" },
+  { userId: "khoa", roleId: "vai-tro-ky-thuat" },
+];
