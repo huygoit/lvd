@@ -58,15 +58,58 @@ model UserRole {
   @@index([roleId])
 }
 
+// Hồ sơ một công ty. id cố định "mac-dinh".
+// address, phone, email, taxCode là phần in trên báo giá và hợp đồng.
 model CompanyProfile {
-  id             String @id
-  name           String
-  taxCode        String @default("")
-  address        String @default("")
-  phone          String @default("")
-  email          String @default("")
-  representativeName String @default("")
-  defaultTaxBps  Int    @default(1000)
+  id                  String   @id
+  name                String
+  taxCode             String   @default("")
+  address             String   @default("")
+  phone               String   @default("")
+  email               String   @default("")
+  representativeName  String   @default("")
+  representativeTitle String   @default("")
+  defaultTaxBps       Int      @default(1000)
+  website             String   @default("")
+  officePhone         String   @default("")
+  contactAddress      String   @default("")
+  fieldLine           String   @default("")
+  about               String   @default("")
+  latitude            String   @default("")
+  longitude           String   @default("")
+  logoName            String   @default("")
+  logoStore           String   @default("")
+  logoKey             String   @default("")
+  updatedAt           DateTime @default(now()) @updatedAt
+  banks               CompanyBankAccount[]
+  files               CompanyProfileFile[]
+}
+
+model CompanyBankAccount {
+  id            String         @id @default(cuid())
+  profileId     String
+  profile       CompanyProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  bankName      String
+  branch        String         @default("")
+  accountNumber String
+  accountName   String         @default("")
+  sortOrder     Int            @default(0)
+
+  @@index([profileId])
+}
+
+model CompanyProfileFile {
+  id         String         @id @default(cuid())
+  profileId  String
+  profile    CompanyProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  fileName   String
+  kind       String
+  size       Int
+  store      String
+  storageKey String
+  createdAt  DateTime       @default(now())
+
+  @@index([profileId])
 }
 
 model CodeSequence {

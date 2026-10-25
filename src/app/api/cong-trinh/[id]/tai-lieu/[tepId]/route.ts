@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { actor, run } from "@/shared/http";
-import { moTaiLieu, xoaTaiLieu } from "@/modules/projects/documents";
+import { actor, readJson, run } from "@/shared/http";
+import { doiTenTaiLieu, moTaiLieu, xoaTaiLieu } from "@/modules/projects/documents";
 import { tieuDeTaiXuong } from "@/modules/projects/document-check";
 
 // Tải xuống và xóa một tài liệu. Trình duyệt phải lưu file, không mở như trang web.
@@ -25,6 +25,14 @@ export async function GET(_request: Request, context: Context) {
       throw error;
     });
   }
+}
+
+export async function PATCH(request: Request, context: Context) {
+  return run(async () => {
+    const user = await actor();
+    const { id, tepId } = await context.params;
+    return doiTenTaiLieu(user, id, tepId, await readJson(request));
+  });
 }
 
 export async function DELETE(_request: Request, context: Context) {

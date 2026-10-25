@@ -286,6 +286,14 @@ const groups: GroupDef[] = [
     label: "Hệ thống",
     items: [
       {
+        id: "ho-so-cong-ty",
+        label: "Hồ sơ công ty",
+        href: routes.companyProfile,
+        module: "system",
+        ready: true,
+        caps: ["settings.manage"],
+      },
+      {
         id: "cai-dat",
         label: "Cài đặt",
         href: routes.settings,

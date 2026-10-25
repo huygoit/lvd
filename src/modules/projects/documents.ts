@@ -4,7 +4,7 @@ import { AppError } from "@/shared/errors";
 import { writeAudit } from "@/modules/system/audit";
 import { assertAny } from "@/modules/system/access";
 import { getProject } from "@/modules/projects/service";
-import { kiemMotTep, loaiNoiDung, nhanLoai, toiDaMoiLan } from "@/modules/projects/document-check";
+import { kiemMotTep, loaiNoiDung, nhanLoai, tenGoc, toiDaMoiLan } from "@/modules/projects/document-check";
 import { docTep, ghiTep, khoaMoi, nhanNoiLuu, noiLuuHienTai, xoaTep, type NoiLuu } from "@/modules/projects/document-store";
 
 // Tài liệu của một công trình. Xem theo quyền xem. Tải lên và xóa theo quyền sửa.
@@ -86,6 +86,32 @@ export async function moTaiLieu(user: User, projectId: string, id: string) {
   if (!row) throw new AppError("Không tìm thấy tài liệu.", 404);
   const bytes = await docTep(noiCuaBanGhi(row.storage), row.storageKey);
   return { fileName: row.fileName, mime: loaiNoiDung(row.kind), bytes };
+}
+
+function cungLoai(duoi: string, kind: string) {
+  const ve = (value: string) => (value === "jpeg" ? "jpg" : value);
+  return ve(duoi) === ve(kind);
+}
+
+export async function doiTenTaiLieu(user: User, projectId: string, id: string, input: { fileName?: unknown }) {
+  assertAny(user, ["projects.update", "projects.create"]);
+  const project = await getProject(user, projectId);
+  const row = await prisma.projectDocument.findFirst({ where: { id, projectId } });
+  if (!row) throw new AppError("Không tìm thấy tài liệu.", 404);
+  const raw = String(input.fileName ?? "").trim();
+  if (!raw) throw new AppError("Tên tài liệu cần ít nhất 1 ký tự.", 400);
+  let name = tenGoc(raw).replace(/\s+/g, " ");
+  const cham = name.lastIndexOf(".");
+  const duoi = cham > 0 ? name.slice(cham + 1).toLowerCase() : "";
+  if (!duoi) name = `${name}.${row.kind === "jpeg" ? "jpg" : row.kind}`;
+  else if (!cungLoai(duoi, row.kind)) throw new AppError("Giữ nguyên đuôi file, chỉ đổi phần tên.", 400);
+  const than = name.slice(0, name.lastIndexOf(".")).trim();
+  if (than.length < 1) throw new AppError("Tên tài liệu cần ít nhất 1 ký tự.", 400);
+  await prisma.$transaction(async (tx) => {
+    await tx.projectDocument.update({ where: { id: row.id }, data: { fileName: name } });
+    await writeAudit(tx, user.id, "sua", "tai_lieu", row.id, `Đổi tên tài liệu thành ${name} của ${project.code}`);
+  });
+  return { id: row.id, fileName: name };
 }
 
 export async function xoaTaiLieu(user: User, projectId: string, id: string) {

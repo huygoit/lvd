@@ -38,6 +38,12 @@ async function Content() {
           <TableBody>
             <TableRow>
               <TableCell>
+                <Link href={routes.companyProfile} className="font-semibold text-primary">Hồ sơ công ty</Link>
+              </TableCell>
+              <TableCell className="whitespace-normal text-muted">Tên, liên lạc, thông tin hóa đơn và hợp đồng, logo, bản đồ và hồ sơ năng lực.</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell>
                 <Link href={routes.backup} className="font-semibold text-primary">Sao lưu và khôi phục</Link>
               </TableCell>
               <TableCell className="whitespace-normal text-muted">Dump PostgreSQL kèm tệp đính kèm, lưu trên máy chủ. Xem danh sách, tải về, khôi phục hoặc xóa từng bản.</TableCell>

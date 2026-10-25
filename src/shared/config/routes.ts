@@ -15,6 +15,7 @@ export const routes = {
   contractCreate: "/hop-dong/moi",
   quotationCreate: "/bao-gia/moi",
   settings: "/cai-dat",
+  companyProfile: "/cai-dat/ho-so-cong-ty",
   backup: "/cai-dat/sao-luu",
   quoteCategories: "/cai-dat/hang-muc",
   jobTitles: "/cai-dat/chuc-danh",

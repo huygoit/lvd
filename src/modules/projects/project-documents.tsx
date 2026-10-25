@@ -61,6 +61,7 @@ export function ProjectDocuments({ projectId, canEdit }: { projectId: string; ca
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<Tep | null>(null);
+  const [sua, setSua] = useState<{ id: string; name: string; saving: boolean; error: string } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -139,6 +140,21 @@ export function ProjectDocuments({ projectId, canEdit }: { projectId: string; ca
     }
   }
 
+  async function luuTen(row: Tep) {
+    if (!sua || sua.id !== row.id) return;
+    setSua({ ...sua, saving: true, error: "" });
+    try {
+      const data = await callApi<{ fileName: string }>(`/api/cong-trinh/${projectId}/tai-lieu/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ fileName: sua.name }),
+      });
+      setRows((current) => current.map((item) => item.id === row.id ? { ...item, fileName: data.fileName } : item));
+      setSua(null);
+    } catch (err) {
+      setSua({ id: row.id, name: sua.name, saving: false, error: loiMang(err) });
+    }
+  }
+
   async function xoa() {
     if (!pending) return;
     setDeleting(true);
@@ -205,13 +221,33 @@ export function ProjectDocuments({ projectId, canEdit }: { projectId: string; ca
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell className="max-w-[240px] truncate font-medium text-ink" title={row.fileName}>{row.fileName}</TableCell>
+                  <TableCell className="max-w-[280px]">
+                    {canEdit && sua?.id === row.id ? (
+                      <>
+                        <input
+                          value={sua.name}
+                          onChange={(event) => setSua({ ...sua, name: event.target.value, error: "" })}
+                          className="h-9 w-full bg-transparent text-sm font-medium text-ink outline-none"
+                        />
+                        {sua.error ? <p className="mt-1 text-xs text-danger">{sua.error}</p> : null}
+                      </>
+                    ) : (
+                      <span className="block truncate font-medium text-ink" title={row.fileName}>{row.fileName}</span>
+                    )}
+                  </TableCell>
                   <TableCell>{row.kindLabel}</TableCell>
                   <TableCell>{dungLuong(row.size)}</TableCell>
                   <TableCell className="whitespace-nowrap">{ngayGio(row.createdAt)}</TableCell>
                   <TableCell>{row.uploadedByName}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
+                      {canEdit ? (
+                        sua?.id === row.id ? (
+                          <Button type="button" size="sm" variant="ghost" disabled={sua.saving} onClick={() => void luuTen(row)}>{sua.saving ? "Đang lưu" : "Lưu"}</Button>
+                        ) : (
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setSua({ id: row.id, name: row.fileName, saving: false, error: "" })}>Sửa</Button>
+                        )
+                      ) : null}
                       <Button type="button" size="sm" variant="ghost" onClick={() => void taiXuong(row)}>
                         <Download />
                         Tải xuống

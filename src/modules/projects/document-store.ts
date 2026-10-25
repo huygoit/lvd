@@ -49,7 +49,11 @@ export function khoaDonHang(noi: NoiLuu) {
   return khoaTrong("don-hang", noi, ".pdf");
 }
 
-function khoaTrong(thu: "tai-lieu" | "don-hang", noi: NoiLuu, duoi: string) {
+export function khoaCongTy(noi: NoiLuu, duoi: "" | ".pdf" | ".png" | ".jpg" | ".webp") {
+  return khoaTrong("cong-ty", noi, duoi);
+}
+
+function khoaTrong(thu: "tai-lieu" | "don-hang" | "cong-ty", noi: NoiLuu, duoi: string) {
   const id = `${thu}/${randomUUID()}${duoi}`;
   if (noi !== "s3") return id;
   const prefix = tienTo();
@@ -57,7 +61,7 @@ function khoaTrong(thu: "tai-lieu" | "don-hang", noi: NoiLuu, duoi: string) {
 }
 
 function mayChu(khoaLuu: string) {
-  const khop = /^(tai-lieu|don-hang)\/([0-9a-f-]{36})(\.pdf)?$/i.exec(khoaLuu);
+  const khop = /^(tai-lieu|don-hang|cong-ty)\/([0-9a-f-]{36})(\.(pdf|png|jpg|webp))?$/i.exec(khoaLuu);
   if (!khop) throw new AppError("Đường lưu file không hợp lệ.", 400);
   const day = path.resolve(process.cwd(), "storage", khop[1].toLowerCase());
   const file = path.resolve(day, path.basename(khoaLuu));

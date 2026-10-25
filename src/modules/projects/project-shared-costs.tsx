@@ -2,134 +2,174 @@
 
 import { useEffect, useState } from "react";
 import { callApi } from "@/shared/client/api";
-import { Button } from "@/shared/components/ui/button";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
+import { Button } from "@/shared/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import type { KhoanChung } from "@/modules/projects/shared-costs";
 
-const oNhap = "h-9 w-full rounded-lg border border-line bg-white px-2 text-sm text-ink outline-none focus:border-primary";
+const oNhap = "h-9 w-full bg-transparent px-0 text-sm text-ink outline-none";
+
+type Dong = {
+  key: string;
+  id: string;
+  name: string;
+  tyLe: string;
+  editing: boolean;
+  saving: boolean;
+  error: string;
+};
+
+function tuDong(row: KhoanChung): Dong {
+  return { key: row.id, id: row.id, name: row.name, tyLe: row.tyLe, editing: false, saving: false, error: "" };
+}
+
+function dongMoi(): Dong {
+  return { key: `moi-${Date.now()}`, id: "", name: "", tyLe: "", editing: true, saving: false, error: "" };
+}
 
 export function ProjectSharedCosts({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
-  const [rows, setRows] = useState<KhoanChung[] | null>(null);
-  const [name, setName] = useState("");
-  const [rate, setRate] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [xoa, setXoa] = useState<KhoanChung | null>(null);
-  const [sua, setSua] = useState<KhoanChung | null>(null);
+  const [rows, setRows] = useState<Dong[] | null>(null);
+  const [loiTai, setLoiTai] = useState("");
+  const [xoa, setXoa] = useState<Dong | null>(null);
+  const [dangXoa, setDangXoa] = useState(false);
 
   useEffect(() => {
     let huy = false;
     setRows(null);
     callApi<KhoanChung[]>(`/api/cong-trinh/${projectId}/chi-phi-chung`)
-      .then((data) => { if (!huy) setRows(data); })
-      .catch((caught: unknown) => { if (!huy) setError(caught instanceof Error ? caught.message : "Không tải được chi phí chung."); });
+      .then((data) => { if (!huy) setRows(data.map(tuDong)); })
+      .catch((caught: unknown) => { if (!huy) setLoiTai(caught instanceof Error ? caught.message : "Không tải được chi phí chung."); });
     return () => { huy = true; };
   }, [projectId]);
 
-  async function them() {
-    setBusy(true);
-    setError("");
+  function sua(key: string, partial: Partial<Dong>) {
+    setRows((current) => current?.map((dong) => dong.key === key ? { ...dong, ...partial, error: "" } : dong) ?? current);
+  }
+
+  function them() {
+    setLoiTai("");
+    setRows((current) => [dongMoi(), ...(current ?? [])]);
+  }
+
+  async function luu(dong: Dong) {
+    sua(dong.key, { saving: true });
     try {
-      const row = await callApi<KhoanChung>(`/api/cong-trinh/${projectId}/chi-phi-chung`, {
-        method: "POST",
-        body: JSON.stringify({ name, rate }),
+      const saved = dong.id
+        ? await callApi<KhoanChung>(`/api/cong-trinh/${projectId}/chi-phi-chung/${dong.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: dong.name, rate: dong.tyLe }),
+        })
+        : await callApi<KhoanChung>(`/api/cong-trinh/${projectId}/chi-phi-chung`, {
+          method: "POST",
+          body: JSON.stringify({ name: dong.name, rate: dong.tyLe }),
+        });
+      setRows((current) => {
+        const conLai = (current ?? []).filter((item) => item.key !== dong.key);
+        const nhap = conLai.filter((item) => !item.id);
+        const daLuu = [...conLai.filter((item) => item.id), tuDong(saved)].sort((a, b) => a.name.localeCompare(b.name, "vi"));
+        return [...nhap, ...daLuu];
       });
-      setRows((current) => [...(current ?? []), row].sort((a, b) => a.name.localeCompare(b.name, "vi")));
-      setName("");
-      setRate("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không lưu được.");
-    } finally {
-      setBusy(false);
+      const thongBao = caught instanceof Error ? caught.message : "Không lưu được.";
+      setRows((current) => current?.map((item) => item.key === dong.key ? { ...item, saving: false, error: thongBao } : item) ?? current);
     }
   }
 
-  async function luuSua() {
-    if (!sua) return;
-    setBusy(true);
-    setError("");
-    try {
-      const row = await callApi<KhoanChung>(`/api/cong-trinh/${projectId}/chi-phi-chung/${sua.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: sua.name, rate: sua.tyLe }),
-      });
-      setRows((current) => (current ?? []).map((item) => item.id === row.id ? row : item).sort((a, b) => a.name.localeCompare(b.name, "vi")));
-      setSua(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không lưu được.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function xoaKhoan() {
+  async function xoaDong() {
     if (!xoa) return;
-    setBusy(true);
-    setError("");
+    if (!xoa.id) {
+      setRows((current) => current?.filter((item) => item.key !== xoa.key) ?? current);
+      setXoa(null);
+      return;
+    }
+    setDangXoa(true);
     try {
       await callApi(`/api/cong-trinh/${projectId}/chi-phi-chung/${xoa.id}`, { method: "DELETE" });
-      setRows((current) => (current ?? []).filter((item) => item.id !== xoa.id));
+      setRows((current) => current?.filter((item) => item.key !== xoa.key) ?? current);
       setXoa(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không xóa được.");
+      setLoiTai(caught instanceof Error ? caught.message : "Không xóa được.");
       setXoa(null);
     } finally {
-      setBusy(false);
+      setDangXoa(false);
     }
   }
 
   return (
-    <section className="rounded-[18px] border border-line bg-white px-5 py-4">
-      <h3 className="text-sm font-semibold text-ink">Chi phí chung</h3>
-      <p className="mt-1 text-sm text-muted">Tỷ lệ trên doanh thu trước thuế của hạng mục công trình này. Cộng vào tổng chi phí cùng đơn hàng đã lưu và các dòng bên dưới.</p>
-      {error ? <p className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{error}</p> : null}
-      <div className="mt-3 space-y-2">
-        {rows === null ? <p className="text-sm text-muted">Đang tải...</p> : null}
-        {rows && rows.length === 0 ? <p className="text-sm text-muted">Chưa có khoản nào.</p> : null}
-        {rows?.map((row) => (
-          <div key={row.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-soft px-3 py-2">
-            {sua?.id === row.id ? (
-              <>
-                <input value={sua.name} onChange={(event) => setSua({ ...sua, name: event.target.value })} className={`${oNhap} max-w-xs`} />
-                <input value={sua.tyLe} onChange={(event) => setSua({ ...sua, tyLe: event.target.value })} inputMode="decimal" className={`${oNhap} w-24`} />
-                <span className="text-sm text-muted">%</span>
-                <Button type="button" size="sm" disabled={busy} onClick={() => void luuSua()}>Lưu</Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setSua(null)}>Đóng</Button>
-              </>
-            ) : (
-              <>
-                <p className="min-w-0 flex-1 text-sm font-medium text-ink">{row.name}</p>
-                <p className="text-sm font-semibold tabular-nums text-primary">{row.tyLe}%</p>
-                {canEdit ? <Button type="button" size="sm" variant="ghost" onClick={() => { setError(""); setSua(row); }}>Sửa</Button> : null}
-                {canEdit ? <Button type="button" size="sm" variant="ghost" className="text-danger" onClick={() => setXoa(row)}>Xóa</Button> : null}
-              </>
-            )}
-          </div>
-        ))}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">Chi phí chung, tính % trên doanh thu trước thuế của hạng mục.</p>
+        {canEdit ? <Button type="button" size="sm" variant="outline" onClick={them}>Thêm</Button> : null}
       </div>
-      {canEdit ? (
-        <form
-          className="mt-3 flex flex-wrap items-center gap-2"
-          onSubmit={(event) => { event.preventDefault(); void them(); }}
-        >
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Tên chi phí" className={`${oNhap} max-w-xs`} />
-          <input value={rate} onChange={(event) => setRate(event.target.value)} inputMode="decimal" placeholder="2,5" className={`${oNhap} w-24`} />
-          <span className="text-sm text-muted">%</span>
-          <Button type="submit" size="sm" disabled={busy}>{busy ? "Đang lưu" : "Thêm"}</Button>
-        </form>
-      ) : null}
-      <AlertDialog open={xoa !== null} onOpenChange={(open) => { if (!open) setXoa(null); }}>
+      {loiTai ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loiTai}</p> : null}
+      <div className="overflow-x-auto rounded-xl border border-line bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-soft hover:bg-soft">
+              <TableHead>Tên chi phí</TableHead>
+              <TableHead className="w-28 text-right">%</TableHead>
+              {canEdit ? <TableHead className="w-36">Thao tác</TableHead> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows && rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={canEdit ? 3 : 2} className="py-8 text-center text-sm text-muted">Chưa có chi phí chung.</TableCell>
+              </TableRow>
+            ) : null}
+            {rows === null ? (
+              <TableRow>
+                <TableCell colSpan={canEdit ? 3 : 2} className="py-8 text-center text-sm text-muted">Đang tải...</TableCell>
+              </TableRow>
+            ) : null}
+            {rows?.map((dong) => (
+              <TableRow key={dong.key} className={dong.error ? "bg-danger/5" : undefined}>
+                <TableCell>
+                  {dong.editing ? (
+                    <input value={dong.name} placeholder="Tên chi phí" onChange={(event) => sua(dong.key, { name: event.target.value })} className={oNhap} />
+                  ) : <span className="font-medium text-ink">{dong.name}</span>}
+                </TableCell>
+                <TableCell className="text-right">
+                  {dong.editing ? (
+                    <input
+                      value={dong.tyLe}
+                      inputMode="decimal"
+                      placeholder="2,5"
+                      onChange={(event) => sua(dong.key, { tyLe: event.target.value })}
+                      className={`${oNhap} text-right tabular-nums`}
+                    />
+                  ) : <span className="font-semibold tabular-nums">{dong.tyLe}%</span>}
+                </TableCell>
+                {canEdit ? (
+                  <TableCell>
+                    <div className="flex flex-nowrap items-center gap-1">
+                      {dong.editing ? (
+                        <Button type="button" size="sm" className="shrink-0" disabled={dong.saving} onClick={() => void luu(dong)}>{dong.saving ? "Đang lưu" : "Lưu"}</Button>
+                      ) : (
+                        <Button type="button" size="sm" variant="ghost" className="shrink-0" onClick={() => sua(dong.key, { editing: true })}>Sửa</Button>
+                      )}
+                      <Button type="button" size="sm" variant="ghost" className="shrink-0 text-danger" disabled={dong.saving} onClick={() => setXoa(dong)}>Xóa</Button>
+                    </div>
+                    {dong.error ? <p className="mt-1 text-xs text-danger">{dong.error}</p> : null}
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <AlertDialog open={xoa !== null} onOpenChange={(open) => { if (!open && !dangXoa) setXoa(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xóa chi phí chung</AlertDialogTitle>
-            <AlertDialogDescription>Khoản {xoa?.name} sẽ không còn tính trên công trình này.</AlertDialogDescription>
+            <AlertDialogDescription>{xoa?.name || "Dòng mới"} sẽ không còn tính trên công trình này.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setXoa(null)}>Hủy</Button>
-            <Button type="button" disabled={busy} onClick={() => void xoaKhoan()}>Xóa</Button>
+            <Button type="button" variant="outline" disabled={dangXoa} onClick={() => setXoa(null)}>Đóng</Button>
+            <Button type="button" variant="destructive" disabled={dangXoa} onClick={() => void xoaDong()}>{dangXoa ? "Đang xóa" : "Xóa"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </div>
   );
 }
