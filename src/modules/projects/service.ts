@@ -6,6 +6,7 @@ import { writeAudit } from "@/modules/system/audit";
 import { assertAny, assertOwn, listOwner } from "@/modules/system/access";
 import { nextCode } from "@/modules/system/codes";
 import { projectStageLabel } from "@/modules/customers/labels";
+import { xoaTep } from "@/modules/projects/document-store";
 
 const stages = Object.keys(projectStageLabel);
 
@@ -188,6 +189,13 @@ export async function deleteProject(user: User, id: string) {
   ].filter(Boolean);
   if (blockers.length > 0) {
     throw new AppError(`Công trình đang có ${blockers.join(", ")} nên không xóa được.`, 400);
+  }
+  const taiLieu = await prisma.projectDocument.findMany({
+    where: { projectId: id },
+    select: { storage: true, storageKey: true },
+  });
+  for (const tep of taiLieu) {
+    await xoaTep(tep.storage === "s3" ? "s3" : "may_chu", tep.storageKey);
   }
   await prisma.$transaction(async (tx) => {
     await tx.project.delete({ where: { id } });

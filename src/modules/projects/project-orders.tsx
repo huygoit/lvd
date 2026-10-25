@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AppWindow, Boxes, FileUp, Ruler } from "lucide-react";
+import { AppWindow, Boxes, Download, FileUp, Ruler } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/shared/components/ui/sheet";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
@@ -351,6 +351,26 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
     }
   }
 
+  async function taiTep(orderId: string, fileName: string) {
+    setError("");
+    try {
+      const response = await fetch(`/api/cong-trinh/${projectId}/don-hang/${orderId}/tep`);
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message || "Không tải được tệp.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName || "don-hang.pdf";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không tải được tệp.");
+    }
+  }
+
   function patch(index: number, partial: Partial<Line>) {
     setCurrent((order) => order ? { ...order, lines: order.lines.map((line, i) => i === index ? { ...line, ...partial } : line) } : order);
   }
@@ -375,10 +395,20 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                   <span className={cn("flex size-10 items-center justify-center rounded-xl", kindMeta[current.kind].tone)}>
                     <KindIcon className="size-4" />
                   </span>
-                  <div>
+                  <div className="min-w-0">
                     <SheetTitle>{current.code} · {current.kindLabel}</SheetTitle>
-                    <SheetDescription>{current.fileName} · {current.statusLabel}</SheetDescription>
+                    <SheetDescription>{current.fileName || "Chưa có tệp"} · {current.statusLabel}</SheetDescription>
                   </div>
+                  {current.fileName ? (
+                    <button
+                      type="button"
+                      onClick={() => void taiTep(current.id, current.fileName)}
+                      className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-line bg-white px-3 text-sm font-semibold text-primary hover:bg-soft"
+                    >
+                      <Download className="size-4" />
+                      Tải về
+                    </button>
+                  ) : null}
                 </div>
               </SheetHeader>
               <div className="flex min-h-0 flex-1 flex-col">
@@ -540,6 +570,12 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                 <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-ink">{order.amount > 0 ? `${formatUnitPrice(order.amount)} ₫` : "—"}</span>
                 <span className="rounded-full bg-soft px-2.5 py-1 text-xs font-medium text-ink">{order.statusLabel}</span>
               </button>
+              {order.fileName ? (
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void taiTep(order.id, order.fileName)}>
+                  <Download className="size-4" />
+                  Tải về
+                </Button>
+              ) : null}
               {order.delivery === "cho_nhan" ? <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">Đang giao</span> : null}
               {order.delivery === "da_nhan" ? <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Đã nhận</span> : null}
               {canEdit && order.status === "da_luu" && order.delivery !== "cho_nhan" ? (

@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { createHash } from "node:crypto";
 import type { User } from "@/shared/auth/types";
 import { hasAnyCapability } from "@/shared/auth/types";
 import { prisma } from "@/shared/db";
@@ -11,6 +9,7 @@ import { assertAny, assertOwn } from "@/modules/system/access";
 import { writeAudit } from "@/modules/system/audit";
 import { nextCode } from "@/modules/system/codes";
 import { cleanSupplierContact, readOrderPdf, type PdfLine } from "@/modules/projects/order-pdf";
+import { docTep, ghiTep, khoaDonHang, noiLuuHienTai, xoaTep, type NoiLuu } from "@/modules/projects/document-store";
 
 const maxSize = 15 * 1024 * 1024;
 
@@ -163,6 +162,56 @@ async function matchLines(kind: string, lines: ReturnType<typeof fromPdf>[]) {
 
 function phoneDigits(value: string) {
   return value.replace(/\D/g, "");
+}
+
+type DongDon = { materialCode: string; barCount: number; lengthMm: number; quantityMilli: number; totalGrams: number };
+type NhaDon = { partnerId: string; supplierName: string; supplierPhone: string };
+
+function tenNha(value: string) {
+  return foldVi(value).replace(/\s+/g, " ").trim();
+}
+
+function cungNha(left: NhaDon, right: NhaDon) {
+  if (left.partnerId && left.partnerId === right.partnerId) return true;
+  const tenLeft = tenNha(left.supplierName);
+  const tenRight = tenNha(right.supplierName);
+  if (!tenLeft || tenLeft !== tenRight) return false;
+  const dtLeft = phoneDigits(left.supplierPhone);
+  const dtRight = phoneDigits(right.supplierPhone);
+  if (dtLeft && dtRight && dtLeft !== dtRight) return false;
+  return true;
+}
+
+function khoaDong(line: DongDon) {
+  return [line.materialCode.trim().toLocaleLowerCase("vi"), line.barCount, line.lengthMm, line.quantityMilli, line.totalGrams].join(":");
+}
+
+function khoaNoiDung(lines: DongDon[]) {
+  return lines.map(khoaDong).sort().join("|");
+}
+
+async function chanDonTrung(projectId: string, hash: string, kind: string, nha: NhaDon, lines: DongDon[]) {
+  if (hash) {
+    const cungTep = await prisma.projectOrder.findFirst({
+      where: { projectId, fileHash: hash },
+      select: { code: true },
+    });
+    if (cungTep) throw new AppError(`Tệp này đã được đọc thành đơn ${cungTep.code}. Không tạo thêm.`, 409);
+  }
+  if (!lines.length || (!tenNha(nha.supplierName) && !nha.partnerId)) return;
+  const dau = khoaNoiDung(lines);
+  const rows = await prisma.projectOrder.findMany({
+    where: { projectId, kind },
+    select: {
+      code: true,
+      partnerId: true,
+      supplierName: true,
+      supplierPhone: true,
+      lines: { select: { materialCode: true, barCount: true, lengthMm: true, quantityMilli: true, totalGrams: true } },
+    },
+  });
+  const trung = rows.find((row) => cungNha(nha, { partnerId: row.partnerId ?? "", supplierName: row.supplierName, supplierPhone: row.supplierPhone }) && khoaNoiDung(row.lines) === dau);
+  if (trung) throw new AppError(`Nội dung trùng đơn ${trung.code}. Cùng nhà cung cấp và cùng các dòng hàng.`, 409);
 }
 
 function samePlace(left: string, right: string) {
@@ -342,25 +391,32 @@ export async function getProjectOrder(user: User, projectId: string, orderId: st
 export async function importProjectOrder(user: User, projectId: string, file: File, onStage: (stage: string) => void) {
   canEdit(user);
   await visible(user, projectId);
-  if (file.type !== "application/pdf") throw new AppError("Chỉ nhận file PDF.", 400);
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) throw new AppError("Chỉ nhận file PDF.", 400);
   if (file.size <= 0 || file.size > maxSize) throw new AppError("Tệp cần nhỏ hơn 15 MB.", 400);
   onStage("doc");
   const bytes = Buffer.from(await file.arrayBuffer());
+  if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new AppError("Tệp không phải PDF.", 400);
+  const fileHash = createHash("sha256").update(bytes).digest("hex");
   const parsed = await readOrderPdf(bytes);
   onStage("doi");
   const kept = parsed.lines.filter((line) => !junk(line));
   if (!kept.length) throw new AppError("Không bóc được dòng hàng nào trong tệp.", 400);
   const shaped = await matchLines(parsed.kind, kept.map((line, index) => fromPdf(parsed.kind, line, index + 1)));
   const supplier = await matchSupplier(parsed.supplierName, parsed.supplierAddress, parsed.supplierPhone);
-  const id = randomUUID();
-  const storedName = `don-hang/${id}.pdf`;
-  await mkdir(path.join(process.cwd(), "storage", "don-hang"), { recursive: true });
-  await writeFile(path.join(process.cwd(), "storage", storedName), bytes);
-  const created = await prisma.$transaction(async (tx) => {
+  await chanDonTrung(projectId, fileHash, parsed.kind, {
+    partnerId: supplier?.id ?? "",
+    supplierName: supplier?.name || parsed.supplierName,
+    supplierPhone: parsed.supplierPhone,
+  }, shaped);
+  const noi = noiLuuHienTai();
+  const storedName = khoaDonHang(noi);
+  await ghiTep(noi, storedName, bytes, "application/pdf");
+  let created;
+  try {
+    created = await prisma.$transaction(async (tx) => {
     const code = await nextCode(tx, "DH", new Date());
     const order = await tx.projectOrder.create({
       data: {
-        id,
         code,
         projectId,
         partnerId: supplier?.id,
@@ -378,6 +434,8 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
         status: "cho_xem",
         fileName: file.name.slice(0, 180),
         storedName,
+        fileStore: noi,
+        fileHash,
         headerNote: parsed.headerNote,
         lines: { create: shaped.map(({ isNew: _isNew, ...line }) => line) },
       },
@@ -385,7 +443,11 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
     });
     await writeAudit(tx, user.id, "tao", "don_hang", order.id, `Bóc tách ${order.code}`);
     return order;
-  });
+    });
+  } catch (error) {
+    await xoaTep(noi, storedName).catch(() => undefined);
+    throw error;
+  }
   return present(created);
 }
 
@@ -604,7 +666,10 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
 export async function deleteProjectOrder(user: User, projectId: string, orderId: string) {
   canEdit(user);
   await visible(user, projectId);
-  const current = await prisma.projectOrder.findFirst({ where: { id: orderId, projectId }, select: { id: true, code: true, storedName: true } });
+  const current = await prisma.projectOrder.findFirst({
+    where: { id: orderId, projectId },
+    select: { id: true, code: true, storedName: true, fileStore: true },
+  });
   if (!current) throw new AppError("Không tìm thấy đơn hàng.", 404);
   const sent = await prisma.stockSlip.findFirst({ where: { orderId, kind: "giao_hang" }, select: { code: true } });
   if (sent) throw new AppError(`Đơn đã có phiếu giao ${sent.code}, không xóa.`, 400);
@@ -612,7 +677,24 @@ export async function deleteProjectOrder(user: User, projectId: string, orderId:
     await tx.projectOrder.delete({ where: { id: orderId } });
     await writeAudit(tx, user.id, "xoa", "don_hang", orderId, `Xóa ${current.code}`);
   });
-  if (current.storedName) {
-    await unlink(path.join(process.cwd(), "storage", current.storedName)).catch(() => undefined);
-  }
+  if (current.storedName) await xoaTepDon(current.fileStore, current.storedName);
+}
+
+function noiCuaDon(fileStore: string): NoiLuu {
+  return fileStore === "s3" ? "s3" : "may_chu";
+}
+
+async function xoaTepDon(fileStore: string, storedName: string) {
+  await xoaTep(noiCuaDon(fileStore), storedName).catch(() => undefined);
+}
+
+export async function readOrderFile(user: User, projectId: string, orderId: string) {
+  await visible(user, projectId);
+  const order = await prisma.projectOrder.findFirst({
+    where: { id: orderId, projectId },
+    select: { code: true, fileName: true, storedName: true, fileStore: true },
+  });
+  if (!order?.storedName) throw new AppError("Đơn này chưa có tệp.", 404);
+  const bytes = await docTep(noiCuaDon(order.fileStore), order.storedName);
+  return { bytes, fileName: order.fileName || `${order.code}.pdf` };
 }

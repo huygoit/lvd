@@ -178,6 +178,8 @@ model Project {
   costs      ProjectCost[]
   supplyRequests FieldSupplyRequest[]
   progressReports FieldProgressReport[]
+  documents ProjectDocument[]
+  sharedCosts ProjectSharedCost[]
 
   @@index([customerId])
   @@index([ownerId])
@@ -292,6 +294,24 @@ model ProjectCost {
   @@index([occurredOn])
 }
 
+// Tài liệu của hồ sơ công trình. Mỗi file một dòng. Không lưu trong thư mục công khai.
+model ProjectDocument {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileName     String
+  kind         String
+  size         Int
+  uploadedById String
+  // s3 hoặc may_chu. Khóa là tên ngẫu nhiên, không dùng tên file người gửi.
+  storage      String
+  storageKey   String
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+  @@index([uploadedById])
+}
+
 // Đơn mua nhà cung cấp đã bốc sẵn. Chưa phải hàng đã nhận tại công trình.
 model ProjectOrder {
   id           String             @id @default(cuid())
@@ -314,6 +334,10 @@ model ProjectOrder {
   status       String             @default("cho_xem")
   fileName     String             @default("")
   storedName   String             @default("")
+  // may_chu hoặc s3. Để trống là file cũ nằm tại storage/don-hang.
+  fileStore    String             @default("")
+  // SHA-256 của đúng tệp PDF. Dùng để chặn đọc lại cùng một file.
+  fileHash     String             @default("")
   headerNote   String             @default("")
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
@@ -323,6 +347,7 @@ model ProjectOrder {
   @@index([projectId])
   @@index([partnerId])
   @@index([status])
+  @@index([projectId, fileHash])
 }
 
 model ProjectOrderLine {
@@ -829,6 +854,20 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+// Chi phí chung của một công trình. rateBps là phần vạn: 2,5% lưu 250.
+// Nhân với doanh thu trước thuế của hạng mục công trình này.
+model ProjectSharedCost {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  rateBps   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
 }
 
 // Thông báo theo từng người. Khác với việc cần xử lý trên tổng quan.

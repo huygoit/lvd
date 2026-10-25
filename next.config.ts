@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   experimental: {
     authInterrupts: true,
   },
-  serverExternalPackages: ["@prisma/client"],
+  serverExternalPackages: ["@prisma/client", "@aws-sdk/client-s3"],
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

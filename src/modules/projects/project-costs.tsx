@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { todayYmd } from "@/shared/lib/dates";
 import { digitsVnd, formatCount, formatVnd } from "@/shared/lib/money";
 import { costCategoryLabel, type CostCategory } from "@/modules/projects/cost-fields";
+import { ProjectSharedCosts } from "@/modules/projects/project-shared-costs";
 
 function ngay(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -215,6 +216,7 @@ export function ProjectCosts({
 
   return (
     <div className="space-y-3">
+      <ProjectSharedCosts projectId={projectId} canEdit={canEdit} />
       <p className="text-sm text-muted">
         {lines ? `${daLuu} khoản.` : "Đang tải chi phí..."}
         {daLuu > 0 ? ` Tổng ${formatVnd(tong)}.` : ""}

@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/modules/dashboard/services/*.test.ts src/modules/quotations/calc.test.ts src/modules/contracts/contract.test.ts src/modules/partners/partner.test.ts",
+    "test": "tsx --test src/modules/dashboard/services/*.test.ts src/modules/quotations/calc.test.ts src/modules/contracts/contract.test.ts src/modules/partners/partner.test.ts src/modules/projects/overview-figures.test.ts src/modules/projects/document-check.test.ts",
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
     "@prisma/client": "^6.19.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
