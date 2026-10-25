@@ -44,8 +44,10 @@ export type HoSoCongTy = {
   fieldLine: string;
   about: string;
   taxPercent: string;
+  incomeTaxPercent: string;
   latitude: string;
   longitude: string;
+  mapEmbed: string;
   hasLogo: boolean;
   banks: TaiKhoanNganHang[];
   files: TepNangLuc[];
@@ -69,6 +71,23 @@ function emailHopLe(value: string) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new AppError("Email chưa đúng định dạng.", 400);
 }
 
+function nhungBanDo(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const cat = raw.startsWith("<") ? (/src=["']([^"']+)["']/i.exec(raw)?.[1] ?? "") : raw;
+  let url: URL;
+  try {
+    url = new URL(cat);
+  } catch {
+    throw new AppError("Đường nhúng bản đồ không đọc được. Hãy dán iframe từ Google Maps.", 400);
+  }
+  if (url.protocol !== "https:" || url.hostname !== "www.google.com" || url.pathname !== "/maps/embed") {
+    throw new AppError("Chỉ nhận iframe nhúng từ Google Maps.", 400);
+  }
+  if (url.toString().length > 2000) throw new AppError("Đường nhúng bản đồ quá dài.", 400);
+  return url.toString();
+}
+
 function webHopLe(value: string) {
   if (!value) return "";
   const coGiaoThuc = /^https?:\/\//i.test(value) ? value : `https://${value}`;
@@ -81,12 +100,32 @@ function webHopLe(value: string) {
   }
 }
 
-function thuePhanTram(value: unknown) {
-  const raw = String(value ?? "").trim().replace("%", "").replace(/\s/g, "").replace(",", ".");
-  if (!/^\d{1,3}(\.\d{1,2})?$/.test(raw)) throw new AppError("Thuế suất chỉ nhận số, tối đa 2 số lẻ.", 400);
+function thueNguyen(value: unknown, ten: string) {
+  const raw = String(value ?? "").trim();
+  if (!/^[1-9]\d{0,2}$/.test(raw)) throw new AppError(`${ten} chỉ nhận số nguyên dương.`, 400);
   const so = Number(raw);
-  if (!Number.isFinite(so) || so < 0 || so > 100) throw new AppError("Thuế suất từ 0 đến 100.", 400);
-  return Math.round(so * 100);
+  if (so < 1 || so > 100) throw new AppError(`${ten} từ 1 đến 100.`, 400);
+  return so * 100;
+}
+
+function thueTuyChon(value: unknown) {
+  if (!String(value ?? "").trim()) return null;
+  return thueNguyen(value, "Thuế thu nhập doanh nghiệp");
+}
+
+function chiSo(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function soDinhDanh(value: unknown, ten: string, batBuoc: boolean, dai: number) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    if (batBuoc) throw new AppError(`${ten} cần nhập số.`, 400);
+    return "";
+  }
+  if (!/^\d+$/.test(raw) || /^0+$/.test(raw)) throw new AppError(`${ten} chỉ nhận số nguyên dương.`, 400);
+  if (raw.length > dai) throw new AppError(`${ten} quá dài.`, 400);
+  return raw;
 }
 
 function hienThue(bps: number) {
@@ -134,20 +173,22 @@ async function lay() {
 function hien(row: Awaited<ReturnType<typeof lay>>): HoSoCongTy {
   return {
     name: row.name,
-    taxCode: row.taxCode,
+    taxCode: chiSo(row.taxCode),
     address: row.address,
-    phone: row.phone,
+    phone: chiSo(row.phone),
     email: row.email,
     website: row.website,
-    officePhone: row.officePhone,
+    officePhone: chiSo(row.officePhone),
     contactAddress: row.contactAddress,
     representativeName: row.representativeName,
     representativeTitle: row.representativeTitle,
     fieldLine: row.fieldLine,
     about: row.about,
     taxPercent: hienThue(row.defaultTaxBps),
+    incomeTaxPercent: row.incomeTaxBps === null ? "" : hienThue(row.incomeTaxBps),
     latitude: row.latitude,
     longitude: row.longitude,
+    mapEmbed: row.mapEmbed,
     hasLogo: Boolean(row.logoKey),
     banks: row.banks.map((item) => ({
       id: item.id,
@@ -184,20 +225,22 @@ export async function updateCompanyProfile(user: User, input: Record<string, unk
   const banks = nganHang(input.banks);
   const data = {
     name,
-    taxCode: chuoi(input.taxCode, 20),
+    taxCode: soDinhDanh(input.taxCode, "Mã số thuế", true, 20),
     address: chuoi(input.address, 240),
-    phone: chuoi(input.phone, 40),
+    phone: soDinhDanh(input.phone, "Điện thoại liên lạc", true, 40),
     email,
     website: webHopLe(chuoi(input.website, 180)),
-    officePhone: chuoi(input.officePhone, 40),
+    officePhone: soDinhDanh(input.officePhone, "Điện thoại khác", false, 40),
     contactAddress: chuoi(input.contactAddress, 240),
     representativeName: chuoi(input.representativeName, 120),
     representativeTitle: chuoi(input.representativeTitle, 80),
     fieldLine: chuoi(input.fieldLine, 240),
     about: doan(input.about, 2000),
-    defaultTaxBps: thuePhanTram(input.taxPercent),
+    defaultTaxBps: thueNguyen(input.taxPercent, "Thuế GTGT mặc định"),
+    incomeTaxBps: thueTuyChon(input.incomeTaxPercent),
     latitude,
     longitude,
+    mapEmbed: nhungBanDo(input.mapEmbed),
   };
   return prisma.$transaction(async (tx) => {
     await tx.companyProfile.update({ where: { id: HO_SO }, data });

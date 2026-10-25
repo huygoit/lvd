@@ -120,12 +120,14 @@ export function ProjectCosts({
   projectId,
   staff,
   canEdit,
+  canSeeShared,
   defaultPayerId,
   addCostRef,
 }: {
   projectId: string;
   staff: Staff[];
   canEdit: boolean;
+  canSeeShared: boolean;
   defaultPayerId: string;
   addCostRef: RefObject<ChiPhiActions | null>;
 }) {
@@ -216,7 +218,7 @@ export function ProjectCosts({
 
   return (
     <div className="space-y-3">
-      <ProjectSharedCosts projectId={projectId} canEdit={canEdit} />
+      {canSeeShared ? <ProjectSharedCosts projectId={projectId} canEdit /> : null}
       <p className="text-sm text-muted">
         {lines ? `${daLuu} khoản.` : "Đang tải chi phí..."}
         {daLuu > 0 ? ` Tổng ${formatVnd(tong)}.` : ""}

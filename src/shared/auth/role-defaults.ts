@@ -9,6 +9,9 @@ const quanTri: Capability[] = [
   "projects.view",
   "projects.create",
   "projects.update",
+  "costs.shared.create",
+  "costs.shared.update",
+  "costs.shared.delete",
   "quotations.view",
   "quotations.create",
   "quotations.update",
@@ -37,6 +40,9 @@ const quanTri: Capability[] = [
   "inventory.create",
   "inventory.update",
   "orders.confirm",
+  "receive.site",
+  "receive.warehouse",
+  "receive.workshop",
   "fabrication.view",
   "installation.view",
   "quality.view",
@@ -72,7 +78,7 @@ const kinhDoanh: Capability[] = [
   "contracts.sign",
 ];
 
-const kyThuat: Capability[] = ["projects.view.assigned", "engineering.view", "orders.confirm"];
+const kyThuat: Capability[] = ["projects.view.assigned", "engineering.view", "orders.confirm", "receive.site"];
 
 export const defaultRoles: Array<{
   id: string;

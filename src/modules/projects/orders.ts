@@ -8,6 +8,7 @@ import { foldVi } from "@/shared/catalog/materials";
 import { assertAny, assertOwn } from "@/modules/system/access";
 import { writeAudit } from "@/modules/system/audit";
 import { nextCode } from "@/modules/system/codes";
+import { phanBoGiao } from "@/modules/deliveries/service";
 import { cleanSupplierContact, readOrderPdf, type PdfLine } from "@/modules/projects/order-pdf";
 import { docTep, ghiTep, khoaDonHang, noiLuuHienTai, xoaTep, type NoiLuu } from "@/modules/projects/document-store";
 
@@ -265,8 +266,13 @@ function supplierBank(bankName: string, accountNumber: string) {
   return { bankName: name.slice(0, 80), accountNumber: number };
 }
 
-function lineAmount(kind: string, line: { totalGrams: number; quantityMilli: number; unitPrice: number }) {
+export function orderLineAmount(kind: string, line: { totalGrams: number; quantityMilli: number; unitPrice: number; lengthMm: number; barCount: number }) {
   if (!line.unitPrice) return 0;
+  if (kind === "kinh") {
+    const tam = line.quantityMilli / 1000;
+    const metVuong = Math.round((line.lengthMm * line.barCount * tam) / 10_000);
+    return Math.round((metVuong * line.unitPrice) / 100);
+  }
   const base = kind === "nhom" ? line.totalGrams : line.quantityMilli;
   return Math.round(base * line.unitPrice / 1000);
 }
@@ -307,7 +313,7 @@ function present(order: {
     unitPrice: number;
     taxBps: number;
   }[];
-}, delivery = "") {
+}, delivery = "", canShip = true, shipped = false) {
   return {
     id: order.id,
     code: order.code,
@@ -315,6 +321,8 @@ function present(order: {
     kindLabel: kindLabel(order.kind),
     status: order.status,
     delivery,
+    canShip,
+    shipped,
     statusLabel: order.status === "da_luu" ? "Đã lưu" : "Chờ xem",
     supplierName: order.partner?.name || order.supplierName,
     supplierCode: order.partner?.code ?? "",
@@ -332,7 +340,7 @@ function present(order: {
     headerNote: order.headerNote,
     fileName: order.fileName,
     createdOn: ngay(order.createdAt),
-    amount: order.lines.reduce((sum, line) => sum + lineAmount(order.kind, line), 0),
+    amount: order.lines.reduce((sum, line) => sum + orderLineAmount(order.kind, line), 0),
     lines: order.lines.map((line) => ({
       id: line.id,
       sortOrder: line.sortOrder,
@@ -358,6 +366,30 @@ function present(order: {
 
 const include = { partner: { select: { id: true, code: true, name: true } }, lines: { orderBy: { sortOrder: "asc" as const } } };
 
+async function conDuocGiao(rows: { id: string; kind: string; lines: { id: string; materialId: string | null; barCount: number; lengthMm: number; quantityMilli: number }[] }[]) {
+  if (!rows.length) return new Map<string, { canShip: boolean; shipped: boolean }>();
+  const slips = await prisma.stockSlip.findMany({
+    where: { orderId: { in: rows.map((row) => row.id) }, kind: "giao_hang", status: { in: ["cho_nhan", "da_nhan"] } },
+    select: {
+      orderId: true,
+      status: true,
+      toKind: true,
+      lines: { select: { orderLineId: true, materialId: true, lengthMm: true, documentQty: true, receivedQty: true } },
+    },
+  });
+  const byOrder = new Map<string, typeof slips>();
+  for (const slip of slips) {
+    if (!slip.orderId) continue;
+    const list = byOrder.get(slip.orderId) ?? [];
+    list.push(slip);
+    byOrder.set(slip.orderId, list);
+  }
+  return new Map(rows.map((row) => {
+    const sent = byOrder.get(row.id) ?? [];
+    return [row.id, { canShip: phanBoGiao(row.kind, row.lines, sent).some((line) => line.remaining > 0), shipped: sent.length > 0 }];
+  }));
+}
+
 async function deliveryMark(ids: string[]) {
   if (!ids.length) return new Map<string, string>();
   const slips = await prisma.stockSlip.findMany({
@@ -377,7 +409,8 @@ export async function listProjectOrders(user: User, projectId: string) {
   await visible(user, projectId);
   const rows = await prisma.projectOrder.findMany({ where: { projectId }, include, orderBy: { createdAt: "desc" } });
   const marks = await deliveryMark(rows.map((row) => row.id));
-  return rows.map((row) => present(row, marks.get(row.id) ?? ""));
+  const open = await conDuocGiao(rows);
+  return rows.map((row) => present(row, marks.get(row.id) ?? "", open.get(row.id)?.canShip ?? false, open.get(row.id)?.shipped ?? false));
 }
 
 export async function getProjectOrder(user: User, projectId: string, orderId: string) {
@@ -385,7 +418,8 @@ export async function getProjectOrder(user: User, projectId: string, orderId: st
   const row = await prisma.projectOrder.findFirst({ where: { id: orderId, projectId }, include });
   if (!row) throw new AppError("Không tìm thấy đơn hàng.", 404);
   const marks = await deliveryMark([row.id]);
-  return present(row, marks.get(row.id) ?? "");
+  const open = await conDuocGiao([row]);
+  return present(row, marks.get(row.id) ?? "", open.get(row.id)?.canShip ?? false, open.get(row.id)?.shipped ?? false);
 }
 
 export async function importProjectOrder(user: User, projectId: string, file: File, onStage: (stage: string) => void) {
@@ -472,7 +506,7 @@ function cleanLine(kind: string, input: LineInput, sortOrder: number) {
       gramsPerMeter: 0,
       totalGrams: 0,
       quantityMilli: milli(input.quantity),
-      unitPrice: 0,
+      unitPrice: money(input.unitPrice),
       taxBps: 0,
     };
   }

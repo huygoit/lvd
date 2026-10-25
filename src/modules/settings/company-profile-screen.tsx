@@ -1,15 +1,45 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { BadgeCheck, Building2, ExternalLink, FileText, Globe, Mail, MapPin, Phone, Trash2, Upload } from "lucide-react";
+import { BadgeCheck, Building2, FileText, Mail, MapPin, Phone, Trash2, Upload } from "lucide-react";
 import { callApi } from "@/shared/client/api";
 import { Button } from "@/shared/components/ui/button";
 import { routes } from "@/shared/config/routes";
 import { cn } from "@/shared/lib/cn";
-import type { DiemBanDo, HoSoCongTy, TaiKhoanNganHang, TepNangLuc } from "@/modules/settings/company-profile";
+import type { HoSoCongTy, TaiKhoanNganHang, TepNangLuc } from "@/modules/settings/company-profile";
 
 const o = "h-10 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-primary";
+
+function chiSo(value: string, dai: number) {
+  return value.replace(/\D/g, "").slice(0, dai);
+}
+
+function chiThue(value: string) {
+  const so = value.replace(/\D/g, "").replace(/^0+/, "");
+  if (so && Number(so) > 100) return null;
+  return so;
+}
+
+function chanKyTuLe(event: FormEvent<HTMLInputElement>) {
+  const goc = event.nativeEvent;
+  if (!(goc instanceof InputEvent) || !goc.data || goc.inputType.startsWith("insertFrom")) return;
+  if (/\D/.test(goc.data)) event.preventDefault();
+}
+
+function chanThue(event: FormEvent<HTMLInputElement>) {
+  const goc = event.nativeEvent;
+  if (!(goc instanceof InputEvent) || !goc.data || goc.inputType.startsWith("insertFrom")) return;
+  if (/\D/.test(goc.data)) {
+    event.preventDefault();
+    return;
+  }
+  const oNhap = event.currentTarget;
+  const dau = oNhap.selectionStart ?? oNhap.value.length;
+  const cuoi = oNhap.selectionEnd ?? dau;
+  const sau = `${oNhap.value.slice(0, dau)}${goc.data}${oNhap.value.slice(cuoi)}`.replace(/\D/g, "").replace(/^0+/, "");
+  if (!sau || Number(sau) > 100) event.preventDefault();
+}
 
 type NganHang = TaiKhoanNganHang & { key: string };
 
@@ -38,16 +68,22 @@ function dungLuong(byte: number) {
   return `${(byte / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function khungBanDo(lat: string, lon: string) {
-  const vi = Number(lat);
-  const kinh = Number(lon);
-  const lech = 0.008;
-  const bbox = `${kinh - lech},${vi - lech},${kinh + lech},${vi + lech}`;
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${vi},${kinh}`)}`;
+const NHUNG_MAC_DINH = "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3834.810849778053!2d108.20004407465562!3d16.02335904066522!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x314219004da321df%3A0x8cd130a4f1166f16!2zTGnDqm4gVmnhu4d0IERvb3I!5e0!3m2!1sen!2s!4v1792904258214!5m2!1sen!2s";
+
+function srcNhung(value: string) {
+  const raw = value.trim();
+  const cat = raw.startsWith("<") ? (/src=["']([^"']+)["']/i.exec(raw)?.[1] ?? "") : raw;
+  try {
+    const url = new URL(cat);
+    if (url.protocol === "https:" && url.hostname === "www.google.com" && url.pathname === "/maps/embed") return url.toString();
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
-  const [hoSo, setHoSo] = useState(initial);
+  const [hoSo, setHoSo] = useState({ ...initial, mapEmbed: initial.mapEmbed || NHUNG_MAC_DINH });
   const [banks, setBanks] = useState<NganHang[]>(initial.banks.map((item) => ({ ...item, key: item.id })));
   const [files, setFiles] = useState<TepNangLuc[]>(initial.files);
   const [logo, setLogo] = useState(initial.hasLogo ? 1 : 0);
@@ -56,9 +92,6 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
   const [dangLuu, setDangLuu] = useState(false);
   const [dangLogo, setDangLogo] = useState(false);
   const [dangTep, setDangTep] = useState(false);
-  const [tim, setTim] = useState(initial.contactAddress || initial.address);
-  const [diem, setDiem] = useState<DiemBanDo[]>([]);
-  const [dangTim, setDangTim] = useState(false);
 
   function sua<K extends keyof HoSoCongTy>(key: K, value: HoSoCongTy[K]) {
     setHoSo((current) => ({ ...current, [key]: value }));
@@ -89,8 +122,10 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
           fieldLine: hoSo.fieldLine,
           about: hoSo.about,
           taxPercent: hoSo.taxPercent,
+          incomeTaxPercent: hoSo.incomeTaxPercent,
           latitude: hoSo.latitude,
           longitude: hoSo.longitude,
+          mapEmbed: hoSo.mapEmbed,
           banks: banks.map(({ bankName, branch, accountNumber, accountName }) => ({ bankName, branch, accountNumber, accountName })),
         }),
       });
@@ -162,27 +197,7 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
     }
   }
 
-  async function timBanDo() {
-    const q = tim.trim() || hoSo.contactAddress || hoSo.address;
-    setDangTim(true);
-    setLoi("");
-    setDiem([]);
-    try {
-      const data = await callApi<DiemBanDo[]>(`/api/cai-dat/ho-so-cong-ty/ban-do?q=${encodeURIComponent(q)}`);
-      setDiem(data);
-      if (data[0]) {
-        sua("latitude", data[0].lat);
-        sua("longitude", data[0].lon);
-      }
-    } catch (caught) {
-      setLoi(caught instanceof Error ? caught.message : "Không tìm được vị trí.");
-    } finally {
-      setDangTim(false);
-    }
-  }
-
   const diaLienLac = hoSo.contactAddress || hoSo.address;
-  const coBanDo = hoSo.latitude !== "" && hoSo.longitude !== "";
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -227,56 +242,41 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
         </section>
 
         <section className="flex flex-col overflow-hidden rounded-[18px] border border-line bg-white shadow-[var(--shadow-card)]">
-          <div className="flex items-center justify-between gap-3 px-5 py-3">
-            <h2 className="text-sm font-semibold text-ink">Vị trí trên OpenStreetMap</h2>
-            {coBanDo ? (
-              <a className="inline-flex items-center gap-1 text-xs font-medium text-primary" href={`https://www.openstreetmap.org/?mlat=${hoSo.latitude}&mlon=${hoSo.longitude}#map=17/${hoSo.latitude}/${hoSo.longitude}`} target="_blank" rel="noreferrer">
-                Mở rộng <ExternalLink className="size-3" />
-              </a>
-            ) : null}
+          <div className="px-5 py-3">
+            <h2 className="text-sm font-semibold text-ink">Vị trí trên Google Maps</h2>
+            <p className="mt-0.5 text-xs text-muted">Iframe nhúng, không cần API key.</p>
           </div>
-          {coBanDo ? (
-            <iframe title="Bản đồ trụ sở Liên Việt Door" className="min-h-64 w-full flex-1 border-0" src={khungBanDo(hoSo.latitude, hoSo.longitude)} />
+          {srcNhung(hoSo.mapEmbed) ? (
+            <iframe
+              title="Bản đồ trụ sở Liên Việt Door"
+              className="min-h-72 w-full flex-1 border-0"
+              src={srcNhung(hoSo.mapEmbed)}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
           ) : (
             <div className="grid min-h-64 flex-1 place-items-center bg-soft px-6 text-center">
-              <div>
-                <MapPin className="mx-auto size-6 text-primary" />
-                <p className="mt-2 text-sm text-muted">Chưa gắn vị trí. Tìm theo địa chỉ rồi lưu hồ sơ.</p>
-              </div>
+              <p className="text-sm text-muted">Chưa có bản đồ. Dán iframe từ Google Maps rồi lưu hồ sơ.</p>
             </div>
           )}
-          <div className="space-y-2 border-t border-line px-5 py-3">
-            <div className="flex gap-2">
-              <input value={tim} onChange={(event) => setTim(event.target.value)} placeholder="Địa chỉ cần tìm" className={o} />
-              <Button type="button" variant="outline" disabled={dangTim} onClick={() => void timBanDo()}>{dangTim ? "Đang tìm" : "Tìm"}</Button>
-            </div>
-            {diem.length > 0 ? (
-              <div className="max-h-28 space-y-1 overflow-auto">
-                {diem.map((item) => (
-                  <button
-                    key={`${item.lat}-${item.lon}`}
-                    type="button"
-                    className="block w-full rounded-lg px-2 py-1 text-left text-xs text-muted hover:bg-soft hover:text-ink"
-                    onClick={() => { sua("latitude", item.lat); sua("longitude", item.lon); }}
-                  >
-                    {item.nhan}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <div className="grid grid-cols-2 gap-2">
-              <input value={hoSo.latitude} onChange={(event) => sua("latitude", event.target.value)} placeholder="Vĩ độ" className={o} />
-              <input value={hoSo.longitude} onChange={(event) => sua("longitude", event.target.value)} placeholder="Kinh độ" className={o} />
-            </div>
-          </div>
+          <details className="border-t border-line px-5 py-3">
+            <summary className="cursor-pointer text-xs font-medium text-muted">Đổi đường nhúng</summary>
+            <textarea
+              value={hoSo.mapEmbed}
+              onChange={(event) => sua("mapEmbed", event.target.value)}
+              rows={3}
+              className="mt-2 w-full rounded-lg border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-primary"
+            />
+          </details>
         </section>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {khoi("Liên lạc", "Số và địa chỉ khách, đối tác dùng khi cần gặp công ty. Báo giá đang in điện thoại liên lạc.", (
           <div className="grid gap-3 sm:grid-cols-2">
-            <O nhan="Điện thoại liên lạc"><input value={hoSo.phone} onChange={(event) => sua("phone", event.target.value)} className={o} /></O>
-            <O nhan="Điện thoại khác"><input value={hoSo.officePhone} onChange={(event) => sua("officePhone", event.target.value)} className={o} /></O>
+            <O nhan="Điện thoại liên lạc"><input value={hoSo.phone} onBeforeInput={chanKyTuLe} onChange={(event) => sua("phone", chiSo(event.target.value, 40))} inputMode="numeric" className={o} /></O>
+            <O nhan="Điện thoại khác"><input value={hoSo.officePhone} onBeforeInput={chanKyTuLe} onChange={(event) => sua("officePhone", chiSo(event.target.value, 40))} inputMode="numeric" className={o} /></O>
             <O nhan="Email"><input value={hoSo.email} onChange={(event) => sua("email", event.target.value)} className={o} /></O>
             <O nhan="Website"><input value={hoSo.website} onChange={(event) => sua("website", event.target.value)} placeholder="https://" className={o} /></O>
             <O nhan="Địa chỉ liên lạc" rong><input value={hoSo.contactAddress} onChange={(event) => sua("contactAddress", event.target.value)} placeholder="Để trống nếu trùng địa chỉ đăng ký" className={o} /></O>
@@ -288,8 +288,15 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <O nhan="Tên công ty" rong><input value={hoSo.name} onChange={(event) => sua("name", event.target.value)} className={o} /></O>
-              <O nhan="Mã số thuế"><input value={hoSo.taxCode} onChange={(event) => sua("taxCode", event.target.value)} className={o} /></O>
-              <O nhan="Thuế suất mặc định (%)"><input value={hoSo.taxPercent} onChange={(event) => sua("taxPercent", event.target.value)} inputMode="decimal" className={o} /></O>
+              <O nhan="Mã số thuế"><input value={hoSo.taxCode} onBeforeInput={chanKyTuLe} onChange={(event) => sua("taxCode", chiSo(event.target.value, 20))} inputMode="numeric" className={o} /></O>
+              <O nhan="Thuế GTGT mặc định (%)">
+                <input value={hoSo.taxPercent} onBeforeInput={chanThue} onChange={(event) => { const so = chiThue(event.target.value); if (so !== null) sua("taxPercent", so); }} inputMode="numeric" className={o} />
+                <span className="mt-1 block text-xs text-muted">Số nguyên từ 1 đến 100. Mỗi công trình vẫn giữ suất riêng.</span>
+              </O>
+              <O nhan="Thuế thu nhập doanh nghiệp (%)">
+                <input value={hoSo.incomeTaxPercent} onBeforeInput={chanThue} onChange={(event) => { const so = chiThue(event.target.value); if (so !== null) sua("incomeTaxPercent", so); }} inputMode="numeric" placeholder="Chưa chốt" className={o} />
+                <span className="mt-1 block text-xs text-muted">Số nguyên từ 1 đến 100, một suất cho cả công ty.</span>
+              </O>
               <O nhan="Địa chỉ đăng ký" rong><input value={hoSo.address} onChange={(event) => sua("address", event.target.value)} className={o} /></O>
               <O nhan="Người đại diện"><input value={hoSo.representativeName} onChange={(event) => sua("representativeName", event.target.value)} className={o} /></O>
               <O nhan="Chức vụ"><input value={hoSo.representativeTitle} onChange={(event) => sua("representativeTitle", event.target.value)} placeholder="Giám đốc" className={o} /></O>
@@ -349,7 +356,7 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
         </div>
       ))}
 
-      <p className="flex items-center gap-2 text-xs text-muted"><Globe className="size-3.5" />Bản đồ dùng OpenStreetMap. Vị trí chỉ được ghi khi bấm Lưu hồ sơ.</p>
+      <p className="text-xs text-muted">Bản đồ lấy từ iframe Google Maps. Bấm Lưu hồ sơ để ghi đường nhúng.</p>
     </div>
   );
 }

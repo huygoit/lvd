@@ -34,6 +34,7 @@ export function ProjectOverview({
   project,
   staff,
   canEdit,
+  canSeeShared,
   canQuote,
   onEdit,
   onQuote,
@@ -60,6 +61,7 @@ export function ProjectOverview({
   };
   staff: { id: string; name: string }[];
   canEdit: boolean;
+  canSeeShared: boolean;
   canQuote: boolean;
   onEdit: () => void;
   onQuote: () => void;
@@ -118,7 +120,7 @@ export function ProjectOverview({
       ) : tab === "Vật tư công trình" ? (
         <ProjectMaterials projectId={project.id} />
       ) : tab === "Chi phí" ? (
-        <ProjectCosts projectId={project.id} staff={staff} canEdit={canEdit} defaultPayerId={project.ownerId} addCostRef={addCostRef} />
+        <ProjectCosts projectId={project.id} staff={staff} canEdit={canEdit} canSeeShared={canSeeShared} defaultPayerId={project.ownerId} addCostRef={addCostRef} />
       ) : tab === "Tài liệu" ? (
         <ProjectDocuments projectId={project.id} canEdit={canEdit} />
       ) : (

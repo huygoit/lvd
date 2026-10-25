@@ -142,6 +142,36 @@ export function FieldHome({
   );
 }
 
+type SapToi = { id: string; code: string; projectName: string; expectedAt: string };
+
+function DemNguoc() {
+  const [rows, setRows] = useState<SapToi[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    callApi<{ waiting: SapToi[] }>("/api/hien-truong/giao?noi=cong_trinh")
+      .then((data) => setRows(data.waiting.filter((row) => row.expectedAt)))
+      .catch(() => setRows([]));
+    return () => window.clearInterval(timer);
+  }, []);
+  const sap = [...rows].sort((a, b) => a.expectedAt.localeCompare(b.expectedAt))[0];
+  if (!sap) return null;
+  const dich = new Date(sap.expectedAt).getTime() - now;
+  const tre = dich <= 0;
+  const phut = Math.max(0, Math.floor(Math.abs(dich) / 60000));
+  const gio = Math.floor(phut / 60);
+  const ngay = Math.floor(gio / 24);
+  const chu = tre ? "Đã đến giờ nhận hàng" : ngay > 0 ? `Còn ${ngay} ngày ${gio % 24} giờ` : gio > 0 ? `Còn ${gio} giờ ${phut % 60} phút` : `Còn ${phut} phút`;
+  const luc = new Date(sap.expectedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" });
+  return (
+    <section className={tre ? "rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-4" : "rounded-[18px] border border-primary/20 bg-primary/5 px-4 py-4"}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">Hàng sắp tới công trình</p>
+      <p className="mt-1 text-2xl font-semibold text-ink">{chu}</p>
+      <p className="mt-1 text-sm text-muted">{sap.projectName} · {sap.code} · {luc}{rows.length > 1 ? ` · ${rows.length} phiếu` : ""}</p>
+    </section>
+  );
+}
+
 function Home({ givenName, onOpen }: { givenName: string; onOpen: (view: View) => void }) {
   const actions = [
     {
@@ -170,6 +200,7 @@ function Home({ givenName, onOpen }: { givenName: string; onOpen: (view: View) =
         <h1 className="mt-1 text-[28px] font-semibold leading-tight">Xin chào, {givenName}</h1>
         <p className="mt-2 text-sm leading-5 text-white/80">Chọn một việc. Mỗi phiếu chỉ một công trình.</p>
       </header>
+      <DemNguoc />
       <div className="space-y-3">
         {actions.map((item) => {
           const Icon = item.icon;

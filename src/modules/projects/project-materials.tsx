@@ -41,6 +41,10 @@ type MaterialRow = {
   held: number;
   shipping: number;
   orderQty: number;
+  supplierQty: number;
+  khoQty: number;
+  xuongQty: number;
+  transitQty: number;
   mismatch: boolean;
   slips: Slip[];
   orders: SavedOrder[];
@@ -55,7 +59,7 @@ const filters = [
   { id: "site", label: "Đang ở công trình", hint: "Còn hàng chưa lắp", icon: Building2, tone: "text-primary bg-primary/10" },
   { id: "installed", label: "Đã lắp", hint: "Không còn dùng được", icon: Wrench, tone: "text-success bg-success/10" },
   { id: "broken", label: "Hỏng, vỡ", hint: "Cần xử lý", icon: TriangleAlert, tone: "text-danger bg-danger/10" },
-  { id: "away", label: "Ở NCC hoặc xưởng", hint: "Kể cả hàng đang giao", icon: Truck, tone: "text-primary bg-primary/10" },
+  { id: "away", label: "Chưa ở công trình", hint: "Còn ở NCC, kho, xưởng hoặc đang giao", icon: Truck, tone: "text-primary bg-primary/10" },
 ] as const;
 
 type FilterId = (typeof filters)[number]["id"];
@@ -75,11 +79,16 @@ function matches(row: MaterialRow, filter: FilterId) {
   if (filter === "site") return row.site > 0;
   if (filter === "installed") return row.installed > 0;
   if (filter === "broken") return row.broken > 0;
-  return row.ordered + row.made + row.held + row.orderQty + row.shipping > 0;
+  return row.ordered + row.made + row.held + row.supplierQty + row.khoQty + row.xuongQty + row.transitQty + row.shipping > 0;
 }
 
 function awayText(row: MaterialRow) {
-  const order = row.orderQty > 0 ? `Đơn hàng ${formatStockQty(row.orderQty)}` : "";
+  const order = [
+    row.khoQty > 0 ? `Kho ${formatStockQty(row.khoQty)}` : "",
+    row.xuongQty > 0 ? `Xưởng ${formatStockQty(row.xuongQty)}` : "",
+    row.transitQty > 0 ? `Đang giao ${formatStockQty(row.transitQty)}` : "",
+    row.supplierQty > 0 ? `Còn ở NCC ${formatStockQty(row.supplierQty)}` : "",
+  ].filter(Boolean).join(" · ");
   const shipping = row.shipping > 0 ? `Đang giao ${formatStockQty(row.shipping)}` : "";
   if (!row.glass) {
     const held = row.held > 0 ? qtyText(row.held) : "";

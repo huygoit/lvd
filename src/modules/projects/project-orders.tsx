@@ -6,6 +6,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/shared/components/ui/sheet";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
 import { measureUnits } from "@/shared/catalog/units";
+import { ProjectShip } from "@/modules/projects/project-ship";
 import { callApi } from "@/shared/client/api";
 import { formatUnitPrice } from "@/modules/projects/item-fields";
 import { cn } from "@/shared/lib/cn";
@@ -53,6 +54,8 @@ type Order = {
   amount: number;
   status: string;
   delivery: string;
+  canShip: boolean;
+  shipped: boolean;
   lines: Line[];
 };
 
@@ -98,18 +101,29 @@ function toLine(line: RawLine): Line {
 
 const kindMeta = {
   nhom: { icon: Ruler, hint: "Thanh, kg/m, giá theo kg", tone: "bg-primary/10 text-primary" },
-  kinh: { icon: AppWindow, hint: "Rộng, cao, số tấm, m²", tone: "bg-primary/10 text-primary" },
+  kinh: { icon: AppWindow, hint: "Rộng, cao, số tấm, m², đơn giá", tone: "bg-primary/10 text-primary" },
   bo_cai: { icon: Boxes, hint: "Số lượng, đơn giá, VAT", tone: "bg-success/10 text-success" },
 } as const;
 
-function glassArea(line: Line) {
+function glassM2(line: Line) {
   const width = Number(line.widthMm.replace(/[.,\s]/g, ""));
   const height = Number(line.heightMm.replace(/[.,\s]/g, ""));
   const sheets = Number(line.quantity.replace(/\s/g, "").replace(",", "."));
-  if (!width || !height || !sheets) return "—";
-  const area = (width * height * sheets) / 1_000_000;
-  const rounded = Math.round(area * 1000) / 1000;
-  return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",");
+  if (!width || !height || !sheets) return null;
+  return Math.round((width * height * sheets) / 10_000) / 100;
+}
+
+function glassArea(line: Line) {
+  const area = glassM2(line);
+  if (area === null) return "—";
+  return area.toFixed(2).replace(/\.?0+$/, "").replace(".", ",");
+}
+
+function glassMoney(line: Line) {
+  const area = glassM2(line);
+  const price = Number(line.unitPrice.replace(/\./g, "")) || 0;
+  if (area === null || !price) return null;
+  return Math.round((Math.round(area * 100) * price) / 100);
 }
 
 function orderStats(order: Order) {
@@ -121,11 +135,19 @@ function orderStats(order: Order) {
       const text = glassArea(line);
       if (text !== "—") area += Number(text.replace(",", "."));
     }
-    const rounded = Math.round(area * 1000) / 1000;
+    const rounded = Math.round(area * 100) / 100;
+    let amount = 0;
+    let coGia = false;
+    for (const line of order.lines) {
+      const tien = glassMoney(line);
+      if (tien === null) continue;
+      amount += tien;
+      coGia = true;
+    }
     return [
-      ["Ký hiệu", String(order.lines.length)],
       ["Tấm", String(sheets)],
-      ["m²", Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(".", ",")],
+      ["m²", rounded.toFixed(2).replace(/\.?0+$/, "").replace(".", ",")],
+      ["Tổng tiền", coGia ? `${formatUnitPrice(amount)} ₫` : "—"],
     ];
   }
   if (order.kind === "nhom") {
@@ -318,22 +340,6 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
     }
   }
 
-  async function ship() {
-    if (!pendingShip) return;
-    setSaving(true);
-    setError("");
-    try {
-      await callApi(`/api/cong-trinh/${projectId}/don-hang/${pendingShip.id}/giao`, { method: "POST" });
-      setPendingShip(null);
-      await load();
-      bao("Đã báo công trình nhận hàng");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không giao được hàng.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function remove() {
     if (!pendingDelete) return;
     const id = pendingDelete.id;
@@ -397,7 +403,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                   </span>
                   <div className="min-w-0">
                     <SheetTitle>{current.code} · {current.kindLabel}</SheetTitle>
-                    <SheetDescription>{current.fileName || "Chưa có tệp"} · {current.statusLabel}</SheetDescription>
+                    <SheetDescription>{current.fileName || "Chưa có tệp"}{current.status === "da_luu" ? "" : ` · ${current.statusLabel}`}</SheetDescription>
                   </div>
                   {current.fileName ? (
                     <button
@@ -414,7 +420,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
         {error ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{error}</p> : null}
-        <div className="grid grid-cols-3 gap-3">
+        <div className={cn("grid gap-3", orderStats(current).length > 3 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
           {orderStats(current).map(([label, value]) => (
             <article key={label} className="rounded-2xl border border-line bg-white px-4 py-3">
               <p className="text-xs text-muted">{label}</p>
@@ -434,6 +440,8 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                     <th className={numHead}>Cao</th>
                     <th className={numHead}>Số tấm</th>
                     <th className={numHead}>m²</th>
+                    <th className={numHead}>Đơn giá</th>
+                    <th className={numHead}>Thành tiền</th>
                     <th className="px-3 py-2 font-medium">Theo nhà</th>
                     <th className="px-3 py-2 font-medium">Ghi chú</th>
                   </>
@@ -463,6 +471,8 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                   <td className="align-top"><input value={line.heightMm} onChange={(event) => patch(index, { heightMm: event.target.value })} className={num} /></td>
                   <td className="align-top"><input value={line.quantity} onChange={(event) => patch(index, { quantity: event.target.value })} className={num} /></td>
                   <td className="px-3 py-2 align-top text-right text-muted tabular-nums">{glassArea(line)}</td>
+                  <td className="align-top"><input value={line.unitPrice} inputMode="numeric" onChange={(event) => patch(index, { unitPrice: event.target.value })} className={num} /></td>
+                  <td className="px-3 py-2 align-top text-right font-medium tabular-nums">{glassMoney(line) === null ? "—" : formatUnitPrice(glassMoney(line) ?? 0)}</td>
                   <td className="px-3 py-2 align-top"><input value={line.colorCode} onChange={(event) => patch(index, { colorCode: event.target.value })} className={cell} /></td>
                   <td className="px-3 py-2 align-top"><input value={line.spec} onChange={(event) => patch(index, { spec: event.target.value })} className={cell} /></td>
                 </tr>
@@ -556,55 +566,53 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
           const item = kindMeta[order.kind];
           const Icon = item.icon;
           return (
-            <div key={order.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3">
+            <div key={order.id} className="flex items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3">
               <button
                 type="button"
                 onClick={() => setCurrent({ ...order, lines: (order.lines as unknown as RawLine[]).map(toLine) })}
                 className="flex min-w-0 flex-1 items-center gap-4 text-left"
               >
                 <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-2xl", item.tone)}><Icon className="size-5" /></span>
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-ink">{order.code} · {order.supplierName || "Chưa rõ nhà cung cấp"}</span>
                   <span className="text-xs text-muted">{order.kindLabel} · {order.lines.length} dòng · {order.createdOn}</span>
                 </span>
-                <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-ink">{order.amount > 0 ? `${formatUnitPrice(order.amount)} ₫` : "—"}</span>
-                <span className="rounded-full bg-soft px-2.5 py-1 text-xs font-medium text-ink">{order.statusLabel}</span>
               </button>
-              {order.fileName ? (
-                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void taiTep(order.id, order.fileName)}>
-                  <Download className="size-4" />
-                  Tải về
-                </Button>
-              ) : null}
-              {order.delivery === "cho_nhan" ? <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">Đang giao</span> : null}
-              {order.delivery === "da_nhan" ? <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Đã nhận</span> : null}
-              {canEdit && order.status === "da_luu" && order.delivery !== "cho_nhan" ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => { setError(""); setPendingShip(order); }}>{order.delivery === "da_nhan" ? "Giao thêm" : "Giao hàng"}</Button>
-              ) : null}
-              {canEdit ? (
-                <Button type="button" variant="outline" size="sm" className="text-danger" onClick={() => setPendingDelete(order)}>Xóa</Button>
-              ) : null}
+              <span className="w-36 shrink-0 text-right text-sm font-semibold tabular-nums text-ink">{order.amount > 0 ? `${formatUnitPrice(order.amount)} ₫` : "—"}</span>
+              <span className="flex w-24 shrink-0 justify-center">
+                {order.delivery === "cho_nhan" ? <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">Đang giao</span> : null}
+                {order.delivery === "da_nhan" ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Đã nhận</span> : null}
+                {order.status !== "da_luu" ? <span className="rounded-full bg-soft px-2.5 py-1 text-xs font-medium text-ink">{order.statusLabel}</span> : null}
+              </span>
+              <span className="flex w-64 shrink-0 justify-end gap-2">
+                <span title={order.fileName ? "Tải tệp đơn hàng" : "Đơn chưa có tệp"} className={order.fileName ? "" : "cursor-not-allowed"}>
+                  <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={!order.fileName} onClick={() => void taiTep(order.id, order.fileName)}>
+                    <Download className="size-4" />
+                    Tải về
+                  </Button>
+                </span>
+                {canEdit ? (
+                  <span title={order.status !== "da_luu" ? "Lưu đơn trước khi giao" : order.canShip ? "Giao phần còn lại" : "Đơn đã giao hết"} className={order.status === "da_luu" && order.canShip ? "" : "cursor-not-allowed"}>
+                    <Button type="button" variant="outline" size="sm" disabled={order.status !== "da_luu" || !order.canShip} onClick={() => { setError(""); setPendingShip(order); }}>Giao hàng</Button>
+                  </span>
+                ) : null}
+                {canEdit ? (
+                  <span title={order.shipped ? "Đơn đã giao, không xóa được" : "Xóa đơn hàng"} className={order.shipped ? "cursor-not-allowed" : ""}>
+                    <Button type="button" variant="outline" size="sm" className="text-danger" disabled={order.shipped} onClick={() => setPendingDelete(order)}>Xóa</Button>
+                  </span>
+                ) : null}
+              </span>
             </div>
           );
         })}
       </div>
-      <AlertDialog open={pendingShip !== null} onOpenChange={(open) => { if (!open) setPendingShip(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{pendingShip?.delivery === "da_nhan" ? "Giao thêm" : "Giao hàng đến công trình"}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingShip?.delivery === "da_nhan"
-                ? "Đơn này đã có phiếu nhận. Phiếu mới lấy lại số lượng trên đơn. Hàng vẫn chưa tính là đang ở công trình cho đến khi được xác nhận."
-                : "Phiếu ghi từng mã và số lượng trên đơn. Hàng giao thẳng, chưa vào kho. Công trình nhận thông báo để xác nhận khi hàng tới."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {error && pendingShip ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
-          <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPendingShip(null)}>Hủy</Button>
-            <Button type="button" onClick={() => void ship()} disabled={saving}>{saving ? "Đang giao" : pendingShip?.delivery === "da_nhan" ? "Giao thêm" : "Giao hàng"}</Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ProjectShip
+        projectId={projectId}
+        orderId={pendingShip?.id ?? ""}
+        open={pendingShip !== null}
+        onClose={() => setPendingShip(null)}
+        onDone={(message) => { setPendingShip(null); void load(); bao(message); }}
+      />
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

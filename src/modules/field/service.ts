@@ -1,12 +1,32 @@
 import type { User } from "@/shared/auth/types";
+import { hasCapability } from "@/shared/auth/types";
 import { prisma } from "@/shared/db";
 import { AppError } from "@/shared/errors";
 import { writeAudit } from "@/modules/system/audit";
-import { assertAny, assertOwn, listOwner } from "@/modules/system/access";
 import { parseQuantityMilli } from "@/modules/projects/item-fields";
 import { nextCode } from "@/modules/system/codes";
 
-const gate = ["installation.view"] as const;
+async function vaoManHinh(user: User) {
+  if (hasCapability(user, "installation.view") || hasCapability(user, "receive.site")) return;
+  const owned = await prisma.project.findFirst({ where: { ownerId: user.id }, select: { id: true } });
+  if (!owned) throw new AppError("Bạn không có quyền thực hiện thao tác này.", 403);
+}
+
+function locChu(user: User) {
+  if (hasCapability(user, "projects.view")) return undefined;
+  return user.id;
+}
+
+function thayCongTrinh(user: User, ownerId: string) {
+  if (hasCapability(user, "projects.view") || ownerId === user.id) return;
+  throw new AppError("Bạn không có quyền xem bản ghi này.", 403);
+}
+
+export async function canOpenFieldHome(user: User) {
+  if (hasCapability(user, "installation.view") || hasCapability(user, "receive.site")) return true;
+  const owned = await prisma.project.findFirst({ where: { ownerId: user.id }, select: { id: true } });
+  return Boolean(owned);
+}
 
 export type SupplyLineInput = {
   name?: string;
@@ -72,8 +92,8 @@ function present(row: {
 }
 
 export async function listFieldProjects(user: User) {
-  assertAny(user, [...gate]);
-  const owner = listOwner(user, "projects.view", "projects.view.assigned");
+  await vaoManHinh(user);
+  const owner = locChu(user);
   const rows = await prisma.project.findMany({
     where: owner ? { ownerId: owner } : {},
     select: { id: true, code: true, name: true, location: true },
@@ -84,8 +104,8 @@ export async function listFieldProjects(user: User) {
 }
 
 export async function listSupplyRequests(user: User) {
-  assertAny(user, [...gate]);
-  const owner = listOwner(user, "projects.view", "projects.view.assigned");
+  await vaoManHinh(user);
+  const owner = locChu(user);
   const rows = await prisma.fieldSupplyRequest.findMany({
     where: owner ? { project: { ownerId: owner } } : {},
     include: {
@@ -99,7 +119,7 @@ export async function listSupplyRequests(user: User) {
 }
 
 export async function searchFieldMaterials(user: User, q: string) {
-  assertAny(user, [...gate]);
+  await vaoManHinh(user);
   const text = q.trim();
   if (text.length < 2) return [];
   const rows = await prisma.material.findMany({
@@ -122,10 +142,10 @@ export async function createSupplyRequest(
   input: { projectId: string; neededOn?: string; note?: string; lines: SupplyLineInput[] },
   now = new Date(),
 ) {
-  assertAny(user, [...gate]);
+  await vaoManHinh(user);
   const project = await prisma.project.findUnique({ where: { id: input.projectId }, select: { id: true, code: true, ownerId: true } });
   if (!project) throw new AppError("Không tìm thấy công trình.", 404);
-  assertOwn(user, "projects.view", "projects.view.assigned", project.ownerId);
+  thayCongTrinh(user, project.ownerId);
   const lines = input.lines ?? [];
   if (lines.length === 0) throw new AppError("Cần ít nhất một dòng vật tư.", 400);
   if (lines.length > 30) throw new AppError("Một phiếu tối đa 30 dòng.", 400);
@@ -180,13 +200,13 @@ export async function createSupplyRequest(
 }
 
 export async function cancelSupplyRequest(user: User, id: string) {
-  assertAny(user, [...gate]);
+  await vaoManHinh(user);
   const current = await prisma.fieldSupplyRequest.findUnique({
     where: { id },
     include: { project: { select: { ownerId: true } } },
   });
   if (!current) throw new AppError("Không tìm thấy phiếu yêu cầu.", 404);
-  assertOwn(user, "projects.view", "projects.view.assigned", current.project.ownerId);
+  thayCongTrinh(user, current.project.ownerId);
   if (current.requesterId !== user.id) throw new AppError("Chỉ người gửi phiếu được hủy.", 400);
   if (current.status !== "da_gui") throw new AppError("Phiếu đã được xử lý nên không hủy được.", 400);
   await prisma.$transaction(async (tx) => {
@@ -207,10 +227,10 @@ function reportDate(value: string) {
 }
 
 async function visibleProject(user: User, projectId: string) {
-  assertAny(user, [...gate]);
+  await vaoManHinh(user);
   const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, code: true, name: true, ownerId: true } });
   if (!project) throw new AppError("Không tìm thấy công trình.", 404);
-  assertOwn(user, "projects.view", "projects.view.assigned", project.ownerId);
+  thayCongTrinh(user, project.ownerId);
   return project;
 }
 
@@ -250,8 +270,8 @@ export async function listProgressItems(user: User, projectId: string) {
 }
 
 export async function listProgressReports(user: User) {
-  assertAny(user, [...gate]);
-  const owner = listOwner(user, "projects.view", "projects.view.assigned");
+  await vaoManHinh(user);
+  const owner = locChu(user);
   const rows = await prisma.fieldProgressReport.findMany({
     where: owner ? { project: { ownerId: owner } } : {},
     include: {
@@ -343,13 +363,13 @@ export async function createProgressReport(
 }
 
 export async function cancelProgressReport(user: User, id: string) {
-  assertAny(user, [...gate]);
+  await vaoManHinh(user);
   const current = await prisma.fieldProgressReport.findUnique({
     where: { id },
     include: { project: { select: { ownerId: true } } },
   });
   if (!current) throw new AppError("Không tìm thấy báo cáo.", 404);
-  assertOwn(user, "projects.view", "projects.view.assigned", current.project.ownerId);
+  thayCongTrinh(user, current.project.ownerId);
   if (current.reporterId !== user.id) throw new AppError("Chỉ người gửi báo cáo được hủy.", 400);
   await prisma.$transaction(async (tx) => {
     await tx.fieldProgressReport.delete({ where: { id } });

@@ -38,7 +38,7 @@ const prompt = `Đọc đơn đặt hàng hoặc hợp đồng mua bán trong PD
 Có ba kiểu:
 - nhom: bảng thanh nhôm. Cột mã hàng, diễn giải, mã màu, số thanh, độ dài mét, tỉ trọng kg/m, tổng kg, đơn giá theo kg. Bỏ dòng tiêu đề nhóm, dòng cộng tiền, phụ thu, đặt cọc, tổng cộng.
 - bo_cai: bảng phụ kiện tính theo bộ hoặc chiếc. Cột mã, tên, mô tả, đơn vị, số lượng, đơn giá, VAT từng dòng nếu có. Bỏ điều khoản hợp đồng và dòng tổng.
-- kinh: bảng thống kê kính. Mỗi dòng là một ký hiệu cửa. Cột ký hiệu, rộng mm, cao mm, số lượng tấm. Nếu tách số tấm theo nhà thì ghi houseNote, ví dụ "CV 4 · HB 18". Ghi chú là kính trong hoặc kính mờ. Độ dày lấy ở tiêu đề. Đợt đặt và hạng mục ghi headerNote. code là ký hiệu cửa. name là "Kính {độ dày} {trong hoặc mờ}", ví dụ "Kính 6,38mm trong".
+- kinh: bảng thống kê kính. Mỗi dòng là một ký hiệu cửa. Cột ký hiệu, rộng mm, cao mm, số lượng tấm, đơn giá. Đơn giá là giá một mét vuông, ghi unitPrice, không phải giá một tấm. Nếu tách số tấm theo nhà thì ghi houseNote, ví dụ "CV 4 · HB 18". Ghi chú là kính trong hoặc kính mờ. Độ dày lấy ở tiêu đề. Đợt đặt và hạng mục ghi headerNote. code là ký hiệu cửa. name là "Kính {độ dày} {trong hoặc mờ}", ví dụ "Kính 6,38mm trong". Bỏ dòng tổng cộng.
 Nhà cung cấp là bên bán. Không lấy khối Khách hàng hay Bên mua.
 Tên, địa chỉ, điện thoại, website, email, mã số thuế của bên bán thường nằm trên đầu thư, kể cả khi đầu thư là hình logo.
 supplierPhone là hotline bên bán. Có hai số thì lấy số đầu. Không lấy số người liên hệ của khách hàng.

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { hasAnyCapability, hasCapability } from "@/shared/auth/types";
+import { thayChiPhiChung } from "@/modules/projects/shared-costs";
 import { requireUser } from "@/shared/auth/session";
 import { rethrowPage } from "@/shared/page";
 import { customerOptions, listStaff } from "@/modules/customers/service";
@@ -53,6 +54,7 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
       stage={stage}
       canCreate={canCreate}
       canEdit={canEdit}
+      canSeeShared={thayChiPhiChung(user)}
       canQuote={hasCapability(user, "quotations.create")}
       staff={staff.map((item) => ({ id: item.id, name: item.name }))}
       customers={customers}

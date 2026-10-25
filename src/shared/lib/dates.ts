@@ -72,6 +72,30 @@ export function formatYmd(ymd: string) {
   return `${day}/${month}/${year}`;
 }
 
+// Giờ trước, ngày sau: 14:30 25/10/2026. Trả về YYYY-MM-DDTHH:mm khi đủ và hợp lệ.
+export function maskGioNgay(raw: string) {
+  const digits = raw.replace(/\D/g, "").slice(0, 12);
+  const hour = digits.slice(0, 2);
+  const minute = digits.slice(2, 4);
+  const day = digits.slice(4, 6);
+  const month = digits.slice(6, 8);
+  const year = digits.slice(8, 12);
+  const gio = [hour, minute].filter((part) => part.length > 0).join(":");
+  const ngay = [day, month, year].filter((part) => part.length > 0).join("/");
+  return [gio, ngay].filter((part) => part.length > 0).join(" ");
+}
+
+export function parseGioNgay(text: string) {
+  const masked = maskGioNgay(text);
+  const match = /^(\d{2}):(\d{2}) (\d{2})\/(\d{2})\/(\d{4})$/.exec(masked);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return "";
+  const ymd = `${match[5]}-${match[4]}-${match[3]}`;
+  return isYmd(ymd) ? `${ymd}T${match[1]}:${match[2]}` : "";
+}
+
 export function dayCount(from: string, to: string) {
   const start = Date.parse(`${from}T00:00:00Z`);
   const end = Date.parse(`${to}T00:00:00Z`);

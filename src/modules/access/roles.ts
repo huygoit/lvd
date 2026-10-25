@@ -77,7 +77,7 @@ function present(row: RoleRow, names: Map<string, string>) {
     name: row.name,
     description: row.description,
     active: row.active,
-    capabilities: row.capabilities.filter(isCapability),
+    capabilities: [...new Set(row.capabilities.flatMap((item) => item === "orders.confirm" ? ["receive.site" as const] : isCapability(item) ? [item] : []))],
     userIds,
     userNames: userIds.flatMap((id) => {
       const name = names.get(id) || findUser(id)?.name;

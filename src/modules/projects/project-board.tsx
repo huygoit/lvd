@@ -64,6 +64,7 @@ export function ProjectBoard({
   stage,
   canCreate,
   canEdit,
+  canSeeShared,
   canQuote,
   staff,
   customers,
@@ -77,6 +78,7 @@ export function ProjectBoard({
   stage: string;
   canCreate: boolean;
   canEdit: boolean;
+  canSeeShared: boolean;
   canQuote: boolean;
   staff: { id: string; name: string }[];
   customers: Customer[];
@@ -306,6 +308,7 @@ export function ProjectBoard({
                     project={current}
                     staff={staff}
                     canEdit={canEdit}
+                    canSeeShared={canSeeShared}
                     canQuote={canQuote}
                     onEdit={() => open("sua", current.id)}
                     onQuote={() => router.push(`/bao-gia/moi?khach=${current.customerId}&cong-trinh=${current.id}`)}

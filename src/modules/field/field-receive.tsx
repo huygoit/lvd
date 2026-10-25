@@ -26,6 +26,8 @@ type SlipDetail = {
   projectCode: string;
   projectName: string;
   sourceLabel: string;
+  toKind: string;
+  expectedAt: string;
   lines: SlipLine[];
   photos: SlipPhoto[];
 };
@@ -37,6 +39,8 @@ type SlipCard = {
   projectCode: string;
   projectName: string;
   sourceLabel: string;
+  toKind: string;
+  expectedAt: string;
   lineCount: number;
   createdAt: string;
 };
@@ -62,7 +66,14 @@ function milliOf(value: string) {
   return Math.round(amount * 1000);
 }
 
-export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () => void }) {
+function gioDen(iso: string) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Ho_Chi_Minh" });
+}
+
+export function ReceiveScreen({ slipId, onBack, noi = "cong_trinh" }: { slipId: string; onBack?: () => void; noi?: "cong_trinh" | "kho" | "xuong" }) {
   const router = useRouter();
   const [picked, setPicked] = useState(slipId);
   const [waiting, setWaiting] = useState<SlipCard[]>([]);
@@ -79,7 +90,7 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
 
   useEffect(() => {
     let stop = false;
-    callApi<{ waiting: SlipCard[]; recent: SlipCard[] }>("/api/hien-truong/giao")
+    callApi<{ waiting: SlipCard[]; recent: SlipCard[] }>(`/api/hien-truong/giao?noi=${noi}`)
       .then((data) => {
         if (stop) return;
         setWaiting(data.waiting);
@@ -94,7 +105,7 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
     return () => {
       stop = true;
     };
-  }, []);
+  }, [noi]);
 
   useEffect(() => {
     if (!picked) {
@@ -169,6 +180,7 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
 
   if (picked) {
     const done = detail?.status === "da_nhan";
+    const toiCongTrinh = !detail || (detail.toKind !== "kho" && detail.toKind !== "xuong");
     const mismatch = Boolean(detail && done && detail.lines.some((line) => line.receivedQty !== line.documentQty));
     const invalid = Boolean(detail && !done && detail.lines.some((line) => {
       const milli = milliOf(qty[line.id] ?? "");
@@ -176,21 +188,28 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
     }));
     return (
       <div className="space-y-4 pb-4">
-        <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-primary" onClick={backToList}>
-          <ChevronLeft className="size-4" />
-          Danh sách phiếu
-        </button>
+        <div className="flex items-center justify-between gap-3">
+          <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-primary" onClick={backToList}>
+            <ChevronLeft className="size-4" />
+            Danh sách phiếu
+          </button>
+          {onBack ? (
+            <button type="button" className="text-sm font-semibold text-primary" onClick={onBack}>
+              Màn hình chính
+            </button>
+          ) : null}
+        </div>
         {loading && !detail ? <p className="text-sm text-muted">Đang mở phiếu...</p> : null}
         {detail ? (
           <>
             <header className="rounded-[24px] bg-gradient-to-br from-[#0B1F44] to-[#1d4ed8] px-5 py-5 text-white shadow-[var(--shadow-card)]">
               <p className="text-sm text-white/75">{detail.code} · {detail.sourceLabel}</p>
               <h1 className="mt-1 text-2xl font-semibold leading-tight">{detail.projectName}</h1>
-              <p className="mt-2 text-sm text-white/80">{detail.projectCode}. Hàng nhận rồi vẫn chưa phải đã lắp.</p>
+              <p className="mt-2 text-sm text-white/80">{detail.projectCode}. {detail.expectedAt ? `Dự kiến ${gioDen(detail.expectedAt)}. ` : ""}Hàng nhận rồi vẫn chưa phải đã lắp.</p>
             </header>
             {done ? (
               <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900">
-                <p className="flex items-center gap-2 font-semibold"><Check className="size-4" /> Đã nhận hàng tại công trình</p>
+                <p className="flex items-center gap-2 font-semibold"><Check className="size-4" /> {detail.toKind === "kho" ? "Đã nhận hàng tại kho" : detail.toKind === "xuong" ? "Đã nhận hàng tại xưởng" : "Đã nhận hàng tại công trình"}</p>
                 <p className="mt-1 text-sm">{mismatch ? "Có lệch số lượng." : "Số nhận khớp với phiếu."}</p>
               </div>
             ) : (
@@ -228,7 +247,7 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
                 );
               })}
             </div>
-            <section className="rounded-2xl border border-line bg-white p-4">
+            {toiCongTrinh ? <section className="rounded-2xl border border-line bg-white p-4">
               <p className="text-sm font-semibold text-ink">Ảnh hàng</p>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 {detail.photos.map((photo) => (
@@ -248,13 +267,20 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
                   </label>
                 </div>
               )}
-            </section>
+            </section> : null}
+            {done && onBack ? (
+              <div className="sticky bottom-3">
+                <Button type="button" className="h-12 w-full rounded-2xl text-base" onClick={onBack}>
+                  Về màn hình chính
+                </Button>
+              </div>
+            ) : null}
             {done ? null : (
               <div className="sticky bottom-3">
-                <Button type="button" className="h-12 w-full rounded-2xl text-base" disabled={busy || invalid || detail.photos.length === 0} onClick={() => void confirm()}>
+                <Button type="button" className="h-12 w-full rounded-2xl text-base" disabled={busy || invalid || (toiCongTrinh && detail.photos.length === 0)} onClick={() => void confirm()}>
                   {busy ? "Đang gửi" : "Xác nhận đã nhận"}
                 </Button>
-                {detail.photos.length === 0 ? <p className="mt-2 text-center text-xs text-muted">Chụp hoặc chọn ít nhất một ảnh hàng.</p> : null}
+                {toiCongTrinh && detail.photos.length === 0 ? <p className="mt-2 text-center text-xs text-muted">Chụp hoặc chọn ít nhất một ảnh hàng.</p> : null}
               </div>
             )}
           </>
@@ -268,13 +294,13 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
       {onBack ? (
         <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-primary" onClick={onBack}>
           <ChevronLeft className="size-4" />
-          Về việc hôm nay
+          Về màn hình chính
         </button>
       ) : null}
       <header className="rounded-[24px] bg-gradient-to-br from-[#0B1F44] to-[#1d4ed8] px-5 py-6 text-white shadow-[var(--shadow-card)]">
-        <p className="text-sm text-white/75">Nhận hàng</p>
+        <p className="text-sm text-white/75">{noi === "kho" ? "Kho công ty" : noi === "xuong" ? "Xưởng" : "Công trình"}</p>
         <h1 className="mt-1 text-[28px] font-semibold leading-tight">Xác nhận vật tư</h1>
-        <p className="mt-2 text-sm leading-5 text-white/80">Khi hàng tới, chụp ảnh và ghi số thực nhận. Nhận hàng chưa phải đã lắp.</p>
+        <p className="mt-2 text-sm leading-5 text-white/80">{noi === "cong_trinh" ? "Khi hàng tới, chụp ảnh và ghi số thực nhận. Nhận hàng chưa phải đã lắp." : "Khi hàng tới, ghi số thực nhận."}</p>
       </header>
       {error ? <p role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
       {loading ? <p className="text-sm text-muted">Đang tải phiếu...</p> : null}
@@ -293,7 +319,7 @@ export function ReceiveScreen({ slipId, onBack }: { slipId: string; onBack?: () 
             <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Truck className="size-5" /></span>
             <span className="min-w-0 flex-1">
               <span className="block truncate font-semibold text-ink">{row.projectName}</span>
-              <span className="block text-xs text-muted">{row.code} · {row.sourceLabel} · {row.lineCount} dòng</span>
+              <span className="block text-xs text-muted">{row.code} · {row.sourceLabel} · {row.lineCount} dòng{row.expectedAt ? ` · Dự kiến ${gioDen(row.expectedAt)}` : ""}</span>
               <span className="block text-xs text-primary">{khiNao(row.createdAt)}</span>
             </span>
           </button>

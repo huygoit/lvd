@@ -169,6 +169,14 @@ const groups: GroupDef[] = [
         ready: true,
         caps: ["inventory.view"],
       },
+      {
+        id: "nhan-kho",
+        label: "Nhận tại kho",
+        href: routes.receiveWarehouse,
+        module: "inventory",
+        ready: true,
+        caps: ["receive.warehouse"],
+      },
     ],
   },
   {
@@ -181,7 +189,15 @@ const groups: GroupDef[] = [
         href: routes.field,
         module: "installation",
         ready: true,
-        caps: ["installation.view", "orders.confirm"],
+        caps: ["installation.view", "receive.site"],
+      },
+      {
+        id: "nhan-xuong",
+        label: "Nhận tại xưởng",
+        href: routes.receiveWorkshop,
+        module: "installation",
+        ready: true,
+        caps: ["receive.workshop"],
       },
       {
         id: "gia-cong-noi-bo",

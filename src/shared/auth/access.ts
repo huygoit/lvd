@@ -7,7 +7,8 @@ import { prisma } from "@/shared/db";
 function capsOf(values: string[]) {
   const list: Capability[] = [];
   for (const value of values) {
-    if (isCapability(value) && !list.includes(value)) list.push(value);
+    const mapped = value === "orders.confirm" ? "receive.site" : value;
+    if (isCapability(mapped) && !list.includes(mapped)) list.push(mapped);
   }
   return list;
 }

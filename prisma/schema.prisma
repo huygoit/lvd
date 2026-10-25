@@ -70,6 +70,8 @@ model CompanyProfile {
   representativeName  String   @default("")
   representativeTitle String   @default("")
   defaultTaxBps       Int      @default(1000)
+  // Suất thuế thu nhập doanh nghiệp của cả công ty, phần vạn. Để trống khi chưa chốt. Không gắn vào từng công trình.
+  incomeTaxBps        Int?
   website             String   @default("")
   officePhone         String   @default("")
   contactAddress      String   @default("")
@@ -77,6 +79,8 @@ model CompanyProfile {
   about               String   @default("")
   latitude            String   @default("")
   longitude           String   @default("")
+  // Đường nhúng Google Maps, dạng https://www.google.com/maps/embed?pb=...
+  mapEmbed            String   @default("")
   logoName            String   @default("")
   logoStore           String   @default("")
   logoKey             String   @default("")
@@ -821,10 +825,12 @@ model StockSlip {
   fromRef   String    @default("")
   toKind    String    @default("")
   toRef     String    @default("")
-  reason    String    @default("")
-  note      String    @default("")
-  revision  Int       @default(1)
-  postedAt  DateTime?
+  reason     String    @default("")
+  note       String    @default("")
+  // Giờ dự kiến hàng tới. Giờ thực nhận nằm ở postedAt.
+  expectedAt DateTime?
+  revision   Int       @default(1)
+  postedAt   DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   lines     StockSlipLine[]
@@ -839,6 +845,13 @@ model StockSlip {
 }
 
 // Ảnh nhận hàng tại công trình. Chỉ lưu tệp, không đọc chữ trong ảnh.
+// Một xưởng một người liên hệ. id là "noi-bo" hoặc mã đối tác xưởng gia công.
+model WorkshopContact {
+  id        String   @id
+  userId    String
+  updatedAt DateTime @updatedAt
+}
+
 model StockSlipPhoto {
   id         String    @id @default(cuid())
   slipId     String
@@ -864,6 +877,7 @@ model StockSlipLine {
   weighedGrams Int    @default(0)
   theoryGrams  Int    @default(0)
   note         String @default("")
+  orderLineId  String @default("")
   sortOrder    Int
 
   @@index([slipId])

@@ -9,7 +9,17 @@ import { formatCount, formatVnd } from "@/shared/lib/money";
 import { ProjectProgress } from "@/modules/projects/project-progress";
 import { GHI_CHU_GIA_TRI, type NhomChiPhi, type SoTongQuan } from "@/modules/projects/overview-figures";
 
-type Bang = SoTongQuan & { nhomChiPhi: NhomChiPhi[]; khoanChung: { name: string; rateBps: number }[] };
+type Bang = SoTongQuan & { nhomChiPhi: NhomChiPhi[]; khoanChung: { name: string; rateBps: number }[]; hienChiPhiChung: boolean };
+
+function chuThichChiPhi(bang: Bang) {
+  const phan = [
+    ...(bang.hienChiPhiChung ? ["chi phí chung"] : []),
+    "đơn hàng đã lưu",
+    "chi phí công trình",
+  ];
+  const cau = phan.join(" + ");
+  return cau.charAt(0).toLocaleUpperCase("vi") + cau.slice(1);
+}
 
 function hienTyLe(rateBps: number) {
   const tram = rateBps / 100;
@@ -189,7 +199,7 @@ export function ProjectFinanceOverview({
               value={bang.tongChiPhi}
               thieu={bang.thieuChiPhi}
               mau="text-ink"
-              chuThich={bang.tongChiPhi === null ? bang.thieuChiPhi ?? "" : "Chi phí chung + đơn hàng đã lưu + chi phí công trình"}
+              chuThich={bang.tongChiPhi === null ? bang.thieuChiPhi ?? "" : chuThichChiPhi(bang)}
             />
             <TheSo
               tieuDe="Lợi nhuận"
@@ -198,7 +208,7 @@ export function ProjectFinanceOverview({
               value={bang.loiNhuan}
               thieu={bang.thieuLoiNhuan}
               mau={mauLoi(bang.loiNhuan)}
-              chuThich={bang.loiNhuan === null ? "Chỉ hiện số khi đủ giá trị sau thuế và tổng chi phí." : "Giá trị sau thuế trừ tổng chi phí"}
+              chuThich={bang.loiNhuan === null ? "Chỉ hiện số khi đủ giá trị sau thuế và tổng chi phí." : "Giá trị sau thuế trừ tổng chi phí, chưa trừ thuế thu nhập doanh nghiệp"}
             />
             <TheSo
               tieuDe="Lợi nhuận ròng"
@@ -224,15 +234,21 @@ export function ProjectFinanceOverview({
             </section>
             <section className="rounded-[18px] border border-line bg-white px-5 py-5 shadow-[var(--shadow-card)]">
               <h3 className="text-base font-semibold">Nguồn chi phí</h3>
-              <p className="mt-1 text-sm text-muted">Chi phí chung tính trên doanh thu trước thuế của hạng mục</p>
+              <p className="mt-1 text-sm text-muted">{bang.hienChiPhiChung ? "Chi phí chung tính trên tổng doanh thu sau thuế của hạng mục. " : ""}Thuế thu nhập = (doanh thu sau thuế − đơn hàng − chi phí công trình) × % hồ sơ công ty.</p>
               <dl className="mt-3">
-                <Dong
-                  nhan={bang.khoanChung.length ? `Chi phí chung · ${bang.khoanChung.map((khoan) => `${khoan.name} ${hienTyLe(khoan.rateBps)}`).join(", ")}` : "Chi phí chung"}
-                  giaTri={bang.chiPhiChung === null ? "Chưa có doanh thu" : formatVnd(bang.chiPhiChung)}
-                />
+                {bang.hienChiPhiChung ? (
+                  <Dong
+                    nhan={bang.khoanChung.length ? `Chi phí chung · ${bang.khoanChung.map((khoan) => `${khoan.name} ${hienTyLe(khoan.rateBps)}`).join(", ")}` : "Chi phí chung"}
+                    giaTri={bang.chiPhiChung === null ? "Chưa có doanh thu sau thuế" : formatVnd(bang.chiPhiChung)}
+                  />
+                ) : null}
                 <Dong nhan="Đơn hàng đã lưu" giaTri={formatVnd(bang.tienDonHang)} />
                 <Dong nhan="Chi phí công trình" giaTri={formatVnd(bang.tienCongTrinh)} />
                 <Dong nhan="Tổng chi phí" giaTri={bang.tongChiPhi === null ? bang.thieuChiPhi ?? "—" : formatVnd(bang.tongChiPhi)} dam />
+                <Dong
+                  nhan={bang.thueTndnBps === null ? "Thuế thu nhập doanh nghiệp" : `Thuế thu nhập doanh nghiệp · ${hienTyLe(bang.thueTndnBps)}`}
+                  giaTri={bang.thueTndn === null ? bang.thieuThueTndn ?? "—" : formatVnd(bang.thueTndn)}
+                />
               </dl>
               {bang.nhomChiPhi.length > 0 ? (
                 <ul className="mt-2 space-y-2">

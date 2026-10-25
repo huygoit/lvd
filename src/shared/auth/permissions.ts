@@ -34,6 +34,9 @@ export const permissionGroups: PermissionGroup[] = [
       { id: "projects.view.assigned", label: "Xem công trình mình phụ trách" },
       { id: "projects.create", label: "Thêm công trình" },
       { id: "projects.update", label: "Sửa công trình" },
+      { id: "costs.shared.create", label: "Thêm chi phí chung", hint: "Cần đủ cả ba quyền chi phí chung mới thấy khoản này." },
+      { id: "costs.shared.update", label: "Sửa chi phí chung", hint: "Cần đủ cả ba quyền chi phí chung mới thấy khoản này." },
+      { id: "costs.shared.delete", label: "Xóa chi phí chung", hint: "Cần đủ cả ba quyền chi phí chung mới thấy khoản này." },
     ],
   },
   {
@@ -86,7 +89,9 @@ export const permissionGroups: PermissionGroup[] = [
       { id: "inventory.view", label: "Xem kho và vật tư" },
       { id: "inventory.create", label: "Thêm phiếu kho, vật tư" },
       { id: "inventory.update", label: "Sửa phiếu kho, vật tư" },
-      { id: "orders.confirm", label: "Xác nhận đơn hàng", hint: "Xác nhận khi hàng tới công trình." },
+      { id: "receive.site", label: "Nhận vật tư tại công trình", hint: "Xác nhận khi hàng tới đúng công trình mình được thấy." },
+      { id: "receive.warehouse", label: "Nhận vật tư tại kho", hint: "Xác nhận hàng nhà cung cấp giao về kho công ty." },
+      { id: "receive.workshop", label: "Nhận vật tư tại xưởng", hint: "Xác nhận hàng tới đúng xưởng mình được gán." },
     ],
   },
   {

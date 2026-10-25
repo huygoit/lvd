@@ -30,6 +30,30 @@ export async function listProjectMaterials(user: User, projectId: string) {
       order: { select: { id: true, code: true, kind: true, createdAt: true, supplierName: true, partner: { select: { name: true } } } },
     },
   });
+  const daNhan = await prisma.stockSlipLine.findMany({
+    where: {
+      materialId: { not: "" },
+      slip: { projectId, kind: "giao_hang", status: "da_nhan", fromKind: { not: "kho" } },
+    },
+    select: { materialId: true, receivedQty: true, slip: { select: { toKind: true } } },
+  });
+  const dangGiao = await prisma.stockSlipLine.findMany({
+    where: {
+      materialId: { not: "" },
+      slip: { projectId, kind: "giao_hang", status: "cho_nhan", fromKind: { not: "kho" } },
+    },
+    select: { materialId: true, documentQty: true },
+  });
+  const transit = new Map<string, number>();
+  for (const row of dangGiao) transit.set(row.materialId, (transit.get(row.materialId) ?? 0) + row.documentQty);
+  const receivedAll = new Map<string, number>();
+  const receivedKho = new Map<string, number>();
+  const receivedXuong = new Map<string, number>();
+  for (const row of daNhan) {
+    receivedAll.set(row.materialId, (receivedAll.get(row.materialId) ?? 0) + row.receivedQty);
+    if (row.slip.toKind === "kho") receivedKho.set(row.materialId, (receivedKho.get(row.materialId) ?? 0) + row.receivedQty);
+    if (row.slip.toKind === "xuong") receivedXuong.set(row.materialId, (receivedXuong.get(row.materialId) ?? 0) + row.receivedQty);
+  }
   const ids = [...new Set(lines.map((line) => line.materialId).filter((id): id is string => Boolean(id)))];
   const cards = ids.length
     ? await prisma.material.findMany({ where: { id: { in: ids } }, select: { id: true, code: true, name: true, stockUnit: true } })
@@ -67,7 +91,20 @@ export async function listProjectMaterials(user: User, projectId: string) {
     list.push({ key: slice.key, code: slice.code, orderedOn: slice.orderedOn, supplierName: slice.supplierName, qty: slice.qty, lengthMm: slice.lengthMm });
     ordersOf.set(slice.materialId, list);
   }
-  const materials = stock.materials.map((row) => ({ ...row, orderQty: orderQty.get(row.materialId) ?? 0, orders: ordersOf.get(row.materialId) ?? [] }));
+  function conONcc(materialId: string) {
+    const dat = orderQty.get(materialId) ?? 0;
+    const daVe = receivedAll.get(materialId) ?? 0;
+    return Math.max(0, dat - daVe);
+  }
+  const materials = stock.materials.map((row) => ({
+    ...row,
+    orderQty: orderQty.get(row.materialId) ?? 0,
+    supplierQty: conONcc(row.materialId),
+    khoQty: receivedKho.get(row.materialId) ?? 0,
+    xuongQty: receivedXuong.get(row.materialId) ?? 0,
+    transitQty: transit.get(row.materialId) ?? 0,
+    orders: ordersOf.get(row.materialId) ?? [],
+  }));
   for (const [materialId, qty] of orderQty) {
     if (materials.some((row) => row.materialId === materialId)) continue;
     const card = cardOf.get(materialId);
@@ -88,6 +125,10 @@ export async function listProjectMaterials(user: User, projectId: string) {
       mismatch: false,
       slips: [],
       orderQty: qty,
+      supplierQty: conONcc(materialId),
+      khoQty: receivedKho.get(materialId) ?? 0,
+      xuongQty: receivedXuong.get(materialId) ?? 0,
+      transitQty: transit.get(materialId) ?? 0,
       orders: ordersOf.get(materialId) ?? [],
     });
   }
@@ -96,7 +137,7 @@ export async function listProjectMaterials(user: User, projectId: string) {
     materials,
     counts: {
       ...stock.counts,
-      away: count((row) => row.ordered + row.made + row.held + row.shipping + row.orderQty),
+      away: count((row) => row.ordered + row.made + row.held + row.shipping + row.supplierQty + row.khoQty + row.xuongQty + row.transitQty),
     },
   };
 }
