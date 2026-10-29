@@ -220,7 +220,7 @@ function samePlace(left: string, right: string) {
 }
 
 async function matchSupplier(name: string, address: string, phone: string) {
-  if (!name || !address || !phone) return null;
+  if (!name.trim()) return null;
   const digits = phoneDigits(phone);
   const rows = await prisma.partner.findMany({
     where: { status: "dang_dung", name: { equals: name, mode: "insensitive" } },
@@ -240,7 +240,13 @@ async function matchSupplier(name: string, address: string, phone: string) {
       roles: { select: { role: true } },
     },
   });
-  return rows.find((row) => samePlace(row.address, address) && phoneDigits(row.phone) === digits) ?? null;
+  if (address.trim() && digits) return rows.find((row) => samePlace(row.address, address) && phoneDigits(row.phone) === digits) ?? null;
+  const khop = rows.filter((row) => {
+    if (address.trim() && !samePlace(row.address, address)) return false;
+    if (digits && phoneDigits(row.phone) !== digits) return false;
+    return true;
+  });
+  return khop.length === 1 ? khop[0] : null;
 }
 
 // Chỉ điền ô đang trống. Ô đã có dữ liệu giữ nguyên.
@@ -557,14 +563,9 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
   if (rawEmail.trim() && !contact.supplierEmail) throw new AppError("Email nhà cung cấp không đúng.", 400);
   if (rawTaxCode.trim() && !contact.supplierTaxCode) throw new AppError("Mã số thuế không đúng.", 400);
   const headerNote = given(input.headerNote, current.headerNote);
-  const missing = [
-    supplierName ? "" : "tên nhà cung cấp",
-    supplierAddress ? "" : "địa chỉ nhà cung cấp",
-    supplierPhone ? "" : "số điện thoại",
-  ].filter(Boolean);
-  if (missing.length) throw new AppError(`Đơn hàng không hợp lệ. Thiếu ${missing.join(", ")}.`, 400);
+  if (!supplierName) throw new AppError("Đơn hàng không hợp lệ. Thiếu tên nhà cung cấp.", 400);
   const digits = phoneDigits(supplierPhone);
-  if (digits.length < 9 || digits.length > 12) throw new AppError("Đơn hàng không hợp lệ. Số điện thoại nhà cung cấp không đúng.", 400);
+  if (digits && (digits.length < 9 || digits.length > 12)) throw new AppError("Đơn hàng không hợp lệ. Số điện thoại nhà cung cấp không đúng.", 400);
   const rawLines = Array.isArray(input.lines) ? input.lines : [];
   if (!rawLines.length) throw new AppError("Đơn chưa có dòng hàng.", 400);
   const lines = rawLines.map((line, index) => cleanLine(current.kind, line as LineInput, index + 1));

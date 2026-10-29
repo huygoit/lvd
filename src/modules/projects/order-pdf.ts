@@ -41,8 +41,8 @@ Có ba kiểu:
 - kinh: bảng thống kê kính. Mỗi dòng là một ký hiệu cửa. Cột ký hiệu, rộng mm, cao mm, số lượng tấm, đơn giá. Đơn giá là giá một mét vuông, ghi unitPrice, không phải giá một tấm. Nếu tách số tấm theo nhà thì ghi houseNote, ví dụ "CV 4 · HB 18". Ghi chú là kính trong hoặc kính mờ. Độ dày lấy ở tiêu đề. Đợt đặt và hạng mục ghi headerNote. code là ký hiệu cửa. name là "Kính {độ dày} {trong hoặc mờ}", ví dụ "Kính 6,38mm trong". Bỏ dòng tổng cộng.
 Nhà cung cấp là bên bán. Không lấy khối Khách hàng hay Bên mua.
 Tên, địa chỉ, điện thoại, website, email, mã số thuế của bên bán thường nằm trên đầu thư, kể cả khi đầu thư là hình logo.
-supplierPhone là hotline bên bán. Có hai số thì lấy số đầu. Không lấy số người liên hệ của khách hàng.
-supplierAddress là địa chỉ bên bán, không lấy địa chỉ khách hàng.
+supplierPhone là hotline bên bán. Có hai số thì lấy số đầu. Không lấy số người liên hệ của khách hàng. Không thấy số thì để chuỗi rỗng.
+supplierAddress là địa chỉ bên bán, không lấy địa chỉ khách hàng. Không thấy địa chỉ thì để chuỗi rỗng.
 supplierWebsite là website bên bán. supplierEmail là email bên bán.
 supplierTaxCode là mã số thuế bên bán. Không thấy thì để chuỗi rỗng. Không lấy số tài khoản ngân hàng.
 supplierRepresentativeName là tên người ở khối chữ ký của bên bán, tức khối không ghi Bên mua và không phải Khách hàng. Nếu khối đó chỉ có tên công ty, không có tên người, để chuỗi rỗng.
@@ -188,11 +188,7 @@ function parseOrder(raw: string): PdfOrder {
   const supplierName = textOf(data.supplierName).slice(0, 200);
   const supplierAddress = textOf(data.supplierAddress).slice(0, 300);
   const supplierPhone = firstPhone(textOf(data.supplierPhone));
-  const missing = [
-    supplierName ? "" : "tên nhà cung cấp",
-    supplierAddress ? "" : "địa chỉ nhà cung cấp",
-    supplierPhone ? "" : "số điện thoại",
-  ].filter(Boolean);
+  const missing = [supplierName ? "" : "tên nhà cung cấp"].filter(Boolean);
   if (missing.length) throw new AppError(`Đơn hàng không hợp lệ. Thiếu ${missing.join(", ")}.`, 400);
   return {
     kind,
