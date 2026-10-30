@@ -138,21 +138,25 @@ describe("phạm vi quyền", () => {
 });
 
 describe("điều hướng theo quyền và trạng thái module", () => {
-  it("thiếu quyền thì ẩn, chưa làm thì chỉ hiện khi được bật", () => {
-    const minh = buildNavigation(user("minh"), true);
+  it("thiếu quyền thì ẩn, chưa làm thì hiện mờ", () => {
+    const minh = buildNavigation(user("minh"));
     const finance = minh.find((group) => group.id === "tai-chinh");
+    const reports = minh.find((group) => group.id === "bao-cao");
     assert.ok(finance);
+    assert.ok(reports);
     assert.equal(finance.items.every((item) => item.state === "disabled"), true);
-    assert.equal(buildNavigation(user("minh"), false).some((group) => group.id === "tai-chinh"), false);
-    assert.equal(buildNavigation(user("ha"), true).some((group) => group.id === "tai-chinh"), false);
-    const supply = buildNavigation(user("minh"), false).find((group) => group.id === "cung-ung");
+    assert.equal(reports.items.every((item) => item.state === "disabled"), true);
+    assert.equal(buildNavigation(user("ha")).some((group) => group.id === "tai-chinh"), false);
+    assert.equal(buildNavigation(user("ha")).some((group) => group.id === "bao-cao"), false);
+    const supply = buildNavigation(user("minh")).find((group) => group.id === "cung-ung");
     assert.deepEqual(
       supply?.items.map((item) => item.label),
-      ["Đối tác"],
+      ["Mua hàng", "Đối tác", "Danh mục vật tư", "Kho/vật tư", "Nhận tại kho", "Vận chuyển"],
     );
-    assert.equal(supply?.items[0]?.state, "link");
-    assert.equal(buildNavigation(user("ha"), false).some((group) => group.id === "cung-ung"), false);
-    const sales = buildNavigation(user("ha"), true).find((group) => group.id === "kinh-doanh");
+    assert.equal(supply?.items[0]?.state, "disabled");
+    assert.equal(supply?.items[1]?.state, "link");
+    assert.equal(buildNavigation(user("ha")).some((group) => group.id === "cung-ung"), false);
+    const sales = buildNavigation(user("ha")).find((group) => group.id === "kinh-doanh");
     assert.deepEqual(
       sales?.items.map((item) => item.label),
       ["Khách hàng", "Báo giá", "Hợp đồng"],

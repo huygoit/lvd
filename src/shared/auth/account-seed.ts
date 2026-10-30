@@ -12,6 +12,12 @@ export async function seedDefaultAccounts(db: Db) {
   if (count > 0) return;
   const passwordHash = await hashPassword(initialPassword);
   for (const account of users) {
+    // Tài khoản đăng nhập dùng chính id nhân viên làm khóa ngoại.
+    await db.staff.upsert({
+      where: { id: account.id },
+      update: { name: account.name, active: true },
+      create: { id: account.id, name: account.name, active: true },
+    });
     await db.loginAccount.create({
       data: {
         id: account.id,

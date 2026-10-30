@@ -401,22 +401,19 @@ const groups: GroupDef[] = [
   },
 ];
 
-function screenState(screen: Screen, showPlanned: boolean): NavItem["state"] | "omit" {
-  if (!screen.ready || moduleState[screen.module] !== "available") {
-    return showPlanned ? "disabled" : "omit";
-  }
+function screenState(screen: Screen): NavItem["state"] {
+  if (!screen.ready || moduleState[screen.module] !== "available") return "disabled";
   return "link";
 }
 
-export function buildNavigation(user: User, showPlanned: boolean): NavGroup[] {
+export function buildNavigation(user: User): NavGroup[] {
   return groups.flatMap((group) => {
     if (!group.items) {
       return [{ id: group.id, label: group.label, href: group.href, items: [] }];
     }
     const items = group.items.flatMap((screen) => {
       if (!hasAnyCapability(user, screen.caps)) return [];
-      const state = screenState(screen, showPlanned);
-      if (state === "omit") return [];
+      const state = screenState(screen);
       return [
         {
           id: screen.id,
