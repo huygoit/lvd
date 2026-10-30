@@ -41,6 +41,8 @@ const quanTri: Capability[] = [
   "inventory.update",
   "orders.confirm",
   "receive.site",
+  "field.supply",
+  "field.progress",
   "receive.warehouse",
   "receive.workshop",
   "fabrication.view",

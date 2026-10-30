@@ -1,15 +1,13 @@
-import type { User } from "@/shared/auth/types";
-import { hasCapability } from "@/shared/auth/types";
+import type { Capability, User } from "@/shared/auth/types";
+import { hasAnyCapability, hasCapability } from "@/shared/auth/types";
 import { prisma } from "@/shared/db";
 import { AppError } from "@/shared/errors";
 import { writeAudit } from "@/modules/system/audit";
 import { parseQuantityMilli } from "@/modules/projects/item-fields";
 import { nextCode } from "@/modules/system/codes";
 
-async function vaoManHinh(user: User) {
-  if (hasCapability(user, "installation.view") || hasCapability(user, "receive.site")) return;
-  const owned = await prisma.project.findFirst({ where: { ownerId: user.id }, select: { id: true } });
-  if (!owned) throw new AppError("Bạn không có quyền thực hiện thao tác này.", 403);
+function batBuoc(user: User, quyen: Capability) {
+  if (!hasCapability(user, quyen)) throw new AppError("Bạn không có quyền thực hiện thao tác này.", 403);
 }
 
 function locChu(user: User) {
@@ -22,10 +20,8 @@ function thayCongTrinh(user: User, ownerId: string) {
   throw new AppError("Bạn không có quyền xem bản ghi này.", 403);
 }
 
-export async function canOpenFieldHome(user: User) {
-  if (hasCapability(user, "installation.view") || hasCapability(user, "receive.site")) return true;
-  const owned = await prisma.project.findFirst({ where: { ownerId: user.id }, select: { id: true } });
-  return Boolean(owned);
+export function canOpenFieldHome(user: User) {
+  return hasAnyCapability(user, ["receive.site", "field.supply", "field.progress"]);
 }
 
 export type SupplyLineInput = {
@@ -92,7 +88,7 @@ function present(row: {
 }
 
 export async function listFieldProjects(user: User) {
-  await vaoManHinh(user);
+  if (!hasAnyCapability(user, ["field.supply", "field.progress"])) throw new AppError("Bạn không có quyền thực hiện thao tác này.", 403);
   const owner = locChu(user);
   const rows = await prisma.project.findMany({
     where: owner ? { ownerId: owner } : {},
@@ -104,7 +100,7 @@ export async function listFieldProjects(user: User) {
 }
 
 export async function listSupplyRequests(user: User) {
-  await vaoManHinh(user);
+  batBuoc(user, "field.supply");
   const owner = locChu(user);
   const rows = await prisma.fieldSupplyRequest.findMany({
     where: owner ? { project: { ownerId: owner } } : {},
@@ -119,7 +115,7 @@ export async function listSupplyRequests(user: User) {
 }
 
 export async function searchFieldMaterials(user: User, q: string) {
-  await vaoManHinh(user);
+  batBuoc(user, "field.supply");
   const text = q.trim();
   if (text.length < 2) return [];
   const rows = await prisma.material.findMany({
@@ -142,7 +138,7 @@ export async function createSupplyRequest(
   input: { projectId: string; neededOn?: string; note?: string; lines: SupplyLineInput[] },
   now = new Date(),
 ) {
-  await vaoManHinh(user);
+  batBuoc(user, "field.supply");
   const project = await prisma.project.findUnique({ where: { id: input.projectId }, select: { id: true, code: true, ownerId: true } });
   if (!project) throw new AppError("Không tìm thấy công trình.", 404);
   thayCongTrinh(user, project.ownerId);
@@ -200,7 +196,7 @@ export async function createSupplyRequest(
 }
 
 export async function cancelSupplyRequest(user: User, id: string) {
-  await vaoManHinh(user);
+  batBuoc(user, "field.supply");
   const current = await prisma.fieldSupplyRequest.findUnique({
     where: { id },
     include: { project: { select: { ownerId: true } } },
@@ -227,7 +223,7 @@ function reportDate(value: string) {
 }
 
 async function visibleProject(user: User, projectId: string) {
-  await vaoManHinh(user);
+  batBuoc(user, "field.progress");
   const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, code: true, name: true, ownerId: true } });
   if (!project) throw new AppError("Không tìm thấy công trình.", 404);
   thayCongTrinh(user, project.ownerId);
@@ -270,7 +266,7 @@ export async function listProgressItems(user: User, projectId: string) {
 }
 
 export async function listProgressReports(user: User) {
-  await vaoManHinh(user);
+  batBuoc(user, "field.progress");
   const owner = locChu(user);
   const rows = await prisma.fieldProgressReport.findMany({
     where: owner ? { project: { ownerId: owner } } : {},
@@ -363,7 +359,7 @@ export async function createProgressReport(
 }
 
 export async function cancelProgressReport(user: User, id: string) {
-  await vaoManHinh(user);
+  batBuoc(user, "field.progress");
   const current = await prisma.fieldProgressReport.findUnique({
     where: { id },
     include: { project: { select: { ownerId: true } } },

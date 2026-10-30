@@ -1,12 +1,12 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { forbidden } from "next/navigation";
+import { hasCapability } from "@/shared/auth/types";
 import { requireUser } from "@/shared/auth/session";
 import { rethrowPage } from "@/shared/page";
 import { FieldHome, type SupplyRequestCard } from "@/modules/field/field-home";
 import type { ProgressReportCard } from "@/modules/field/field-progress";
-import { canOpenReceive } from "@/modules/deliveries/service";
-import { canOpenFieldHome, listFieldProjects, listProgressReports, listSupplyRequests } from "@/modules/field/service";
+import { listFieldProjects, listProgressReports, listSupplyRequests } from "@/modules/field/service";
 
 export const metadata: Metadata = { title: "Hiện trường" };
 
@@ -26,24 +26,31 @@ function one(value: string | string[] | undefined) {
 
 async function Content({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
-  const fullHome = await canOpenFieldHome(user);
-  if (!fullHome && !(await canOpenReceive(user))) forbidden();
+  const quyen = {
+    xacNhan: hasCapability(user, "receive.site"),
+    yeuCau: hasCapability(user, "field.supply"),
+    tienDo: hasCapability(user, "field.progress"),
+  };
+  if (!quyen.xacNhan && !quyen.yeuCau && !quyen.tienDo) forbidden();
   const query = await searchParams;
   const raw = one(query.viec);
-  const initialView = !fullHome ? "xac-nhan" : views.includes(raw as (typeof views)[number]) ? (raw as (typeof views)[number]) : "home";
+  const duoc = new Set<string>(["home"]);
+  if (quyen.xacNhan) duoc.add("xac-nhan");
+  if (quyen.yeuCau) {
+    duoc.add("yeu-cau");
+    duoc.add("tao");
+  }
+  if (quyen.tienDo) duoc.add("tien-do");
+  const initialView = views.includes(raw as (typeof views)[number]) && duoc.has(raw) ? (raw as (typeof views)[number]) : "home";
   let projects: Awaited<ReturnType<typeof listFieldProjects>> = [];
   let requests: SupplyRequestCard[] = [];
   let progressReports: ProgressReportCard[] = [];
-  if (fullHome) {
-    try {
-      [projects, requests, progressReports] = await Promise.all([
-        listFieldProjects(user),
-        listSupplyRequests(user),
-        listProgressReports(user),
-      ]);
-    } catch (error) {
-      rethrowPage(error);
-    }
+  try {
+    if (quyen.yeuCau || quyen.tienDo) projects = await listFieldProjects(user);
+    if (quyen.yeuCau) requests = await listSupplyRequests(user);
+    if (quyen.tienDo) progressReports = await listProgressReports(user);
+  } catch (error) {
+    rethrowPage(error);
   }
   return (
     <FieldHome
@@ -54,7 +61,7 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
       progressReports={progressReports}
       initialView={initialView}
       initialSlip={one(query.phieu)}
-      fullHome={fullHome}
+      quyen={quyen}
     />
   );
 }

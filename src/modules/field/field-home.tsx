@@ -61,7 +61,7 @@ export function FieldHome({
   progressReports,
   initialView,
   initialSlip,
-  fullHome,
+  quyen,
 }: {
   givenName: string;
   actorId: string;
@@ -70,7 +70,7 @@ export function FieldHome({
   progressReports: ProgressReportCard[];
   initialView: View;
   initialSlip: string;
-  fullHome: boolean;
+  quyen: { xacNhan: boolean; yeuCau: boolean; tienDo: boolean };
 }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
@@ -86,6 +86,8 @@ export function FieldHome({
   }, [initialView]);
 
   function open(next: View) {
+    const duoc = next === "home" || (next === "xac-nhan" && quyen.xacNhan) || ((next === "yeu-cau" || next === "tao") && quyen.yeuCau) || (next === "tien-do" && quyen.tienDo);
+    if (!duoc) return;
     setView(next);
     setError("");
     const params = new URLSearchParams(window.location.search);
@@ -98,9 +100,9 @@ export function FieldHome({
 
   return (
     <div className="mx-auto w-full max-w-md">
-      {view === "home" ? <Home givenName={givenName} onOpen={open} /> : null}
-      {view === "xac-nhan" ? <ReceiveScreen slipId={initialSlip} onBack={fullHome ? () => open("home") : undefined} /> : null}
-      {view === "tien-do" ? (
+      {view === "home" ? <Home givenName={givenName} onOpen={open} quyen={quyen} /> : null}
+      {view === "xac-nhan" && quyen.xacNhan ? <ReceiveScreen slipId={initialSlip} onBack={() => open("home")} /> : null}
+      {view === "tien-do" && quyen.tienDo ? (
         <ProgressScreen
           actorId={actorId}
           projects={projects}
@@ -108,7 +110,7 @@ export function FieldHome({
           onBack={() => open("home")}
         />
       ) : null}
-      {view === "yeu-cau" ? (
+      {view === "yeu-cau" && quyen.yeuCau ? (
         <RequestList
           rows={rows}
           actorId={actorId}
@@ -127,7 +129,7 @@ export function FieldHome({
           }}
         />
       ) : null}
-      {view === "tao" ? (
+      {view === "tao" && quyen.yeuCau ? (
         <RequestForm
           projects={projects}
           onBack={() => open("yeu-cau")}
@@ -172,27 +174,27 @@ function DemNguoc() {
   );
 }
 
-function Home({ givenName, onOpen }: { givenName: string; onOpen: (view: View) => void }) {
+function Home({ givenName, onOpen, quyen }: { givenName: string; onOpen: (view: View) => void; quyen: { xacNhan: boolean; yeuCau: boolean; tienDo: boolean } }) {
   const actions = [
-    {
+    quyen.xacNhan ? {
       view: "xac-nhan" as const,
       title: "Xác nhận vật tư công trình",
       text: "Khi hàng tới, chụp ảnh và ghi số thực nhận.",
       icon: PackageCheck,
-    },
-    {
+    } : null,
+    quyen.yeuCau ? {
       view: "yeu-cau" as const,
       title: "Yêu cầu vật tư công trình",
       text: "Xin thêm hàng cho công trình. Phiếu gửi văn phòng, chưa trừ kho.",
       icon: PackagePlus,
-    },
-    {
+    } : null,
+    quyen.tienDo ? {
       view: "tien-do" as const,
       title: "Báo cáo tiến độ công trình",
       text: "Ghi khối lượng đã làm theo từng hạng mục của công trình.",
       icon: ClipboardList,
-    },
-  ];
+    } : null,
+  ].filter((item) => item !== null);
   return (
     <div className="space-y-4">
       <header className="rounded-[24px] bg-gradient-to-br from-[#0B1F44] to-[#1d4ed8] px-5 py-6 text-white shadow-[var(--shadow-card)]">
@@ -200,7 +202,7 @@ function Home({ givenName, onOpen }: { givenName: string; onOpen: (view: View) =
         <h1 className="mt-1 text-[28px] font-semibold leading-tight">Xin chào, {givenName}</h1>
         <p className="mt-2 text-sm leading-5 text-white/80">Chọn một việc. Mỗi phiếu chỉ một công trình.</p>
       </header>
-      <DemNguoc />
+      {quyen.xacNhan ? <DemNguoc /> : null}
       <div className="space-y-3">
         {actions.map((item) => {
           const Icon = item.icon;

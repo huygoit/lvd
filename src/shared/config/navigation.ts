@@ -189,7 +189,7 @@ const groups: GroupDef[] = [
         href: routes.field,
         module: "installation",
         ready: true,
-        caps: ["installation.view", "receive.site"],
+        caps: ["receive.site", "field.supply", "field.progress"],
       },
       {
         id: "nhan-xuong",
