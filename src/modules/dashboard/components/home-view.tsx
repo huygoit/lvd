@@ -28,8 +28,9 @@ export function HomeView({ view }: { view: DashboardView }) {
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-[18px] text-white" style={{ background: "var(--gradient-brand)" }}>
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0B1F44] from-25% via-[#0B1F44]/88 to-[#0B1F44]/20" />
+      <section className="bg-brand relative overflow-hidden rounded-[18px] text-white">
+        <div className="pointer-events-none absolute -top-16 right-10 size-56 rounded-full bg-white/25 blur-2xl" />
+        <div className="pointer-events-none absolute bottom-[-4rem] left-1/3 size-48 rounded-full bg-sky/40 blur-3xl" />
         <svg viewBox="0 0 360 180" className="pointer-events-none absolute -right-6 top-0 hidden h-full w-[280px] text-white/15 lg:block" aria-hidden="true">
           <rect x="40" y="16" width="120" height="148" fill="none" stroke="currentColor" strokeWidth="2" />
           <rect x="180" y="16" width="120" height="148" fill="none" stroke="currentColor" strokeWidth="2" />

@@ -2,36 +2,37 @@
 @source "../";
 
 :root {
-  --brand-navy: #0b1f44;
-  --deep-blue: #143b8f;
-  --primary: #1d4ed8;
-  --bright-blue: #2563eb;
-  --sky: #38bdf8;
-  --soft-blue: #eff6ff;
-  --page: #f4f7fc;
+  --brand-navy: #08384a;
+  --deep-blue: #0a6d8c;
+  --primary: #0087b3;
+  --bright-blue: #00a7e1;
+  --sky: #7ed6f5;
+  --soft-blue: #e7f7fd;
+  --page: #f4fbfe;
   --surface: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --border: #e2e8f0;
+  --text: #0c2430;
+  --muted: #5b7280;
+  --border: #d5ebf4;
   --success: #047857;
   --warning: #b45309;
   --danger: #b91c1c;
   --primary-foreground: #ffffff;
-  --background: #f4f7fc;
-  --foreground: #0f172a;
+  --background: #f4fbfe;
+  --foreground: #0c2430;
   --card: #ffffff;
-  --input: #e2e8f0;
-  --ring: #1d4ed8;
+  --input: #d5ebf4;
+  --ring: #00a7e1;
   --destructive: #b91c1c;
-  --secondary: #eff6ff;
-  --secondary-foreground: #0b1f44;
-  --accent: #eff6ff;
-  --accent-foreground: #0b1f44;
-  --muted-foreground: #64748b;
-  --gradient-brand: linear-gradient(120deg, #0b1f44 0%, #143b8f 52%, #2563eb 100%);
-  --gradient-primary: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-  --gradient-soft: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 55%, #ffffff 100%);
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 35, 80, 0.05);
+  --secondary: #e7f7fd;
+  --secondary-foreground: #08384a;
+  --accent: #e7f7fd;
+  --accent-foreground: #08384a;
+  --muted-foreground: #5b7280;
+  /* Xanh ngọc Aquafina: đậm bên trái để chữ trắng đọc được, sáng dần sang phải. */
+  --gradient-brand: linear-gradient(118deg, #053646 0%, #067a9e 36%, #00a7e1 68%, #8adcf6 100%);
+  --gradient-primary: linear-gradient(135deg, #067a9e 0%, #00a7e1 58%, #5ec8f0 100%);
+  --gradient-soft: linear-gradient(160deg, #e7f7fd 0%, #f7fdff 48%, #ffffff 100%);
+  --shadow-card: 0 1px 2px rgba(8, 56, 74, 0.05), 0 14px 34px rgba(0, 135, 179, 0.1);
   --radius-card: 18px;
   --radius-control: 12px;
 }
@@ -70,9 +71,28 @@
 }
 
 body {
-  background: var(--page);
+  background:
+    radial-gradient(980px 460px at 100% -120px, rgba(126, 214, 245, 0.55), transparent 58%),
+    radial-gradient(760px 380px at -120px -40px, rgba(0, 167, 225, 0.16), transparent 52%),
+    var(--page);
   color: var(--text);
   font-family: var(--font-inter), "Segoe UI", sans-serif;
+}
+
+.thanh-tren {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(231, 247, 253, 0.9));
+  box-shadow: inset 0 -1px 0 rgba(0, 167, 225, 0.22);
+}
+
+.bg-brand {
+  background-color: #067a9e;
+  background-image: var(--gradient-brand);
+}
+
+a.bg-primary,
+button.bg-primary {
+  background-color: #067a9e;
+  background-image: var(--gradient-primary);
 }
 
 .skip-link {
@@ -102,7 +122,7 @@ dialog.sheet {
 }
 
 dialog.sheet::backdrop {
-  background: rgba(11, 31, 68, 0.48);
+  background: rgba(8, 56, 74, 0.42);
 }
 
 @keyframes lvd-sheet-in {

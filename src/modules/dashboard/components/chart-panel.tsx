@@ -20,7 +20,7 @@ export function ChartPanel({ charts }: { charts: ChartView[] }) {
                   <PieChart>
                     <Pie data={chart.points} dataKey="value" nameKey="label" innerRadius={58} outerRadius={82} paddingAngle={2}>
                       {chart.points.map((point) => (
-                        <Cell key={point.label} fill={point.color ?? "#1D4ED8"} />
+                        <Cell key={point.label} fill={point.color ?? "#00A7E1"} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(value) => [`${formatCount(Number(value))} ${chart.unitLabel}`, "Số lượng"]} />
@@ -40,7 +40,7 @@ export function ChartPanel({ charts }: { charts: ChartView[] }) {
                       </>
                     )}
                     <Tooltip formatter={(value) => [`${formatCount(Number(value))} ${chart.unitLabel}`, "Số lượng"]} />
-                    <Bar dataKey="value" fill="#1D4ED8" radius={4} />
+                    <Bar dataKey="value" fill="#00A7E1" radius={4} />
                   </BarChart>
                 )}
               </ResponsiveContainer>

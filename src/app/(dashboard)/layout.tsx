@@ -18,7 +18,7 @@ async function Shell({ children }: { children: React.ReactNode }) {
   const attention = await loadAttention(user);
   const groups = buildNavigation(user);
   return (
-    <div className="min-h-full bg-page text-ink">
+    <div className="min-h-full text-ink">
       <a className="skip-link" href="#noi-dung">
         Đi tới nội dung
       </a>

@@ -20,7 +20,7 @@ async function Body() {
   if (current) redirect(routes.home);
   return (
     <main className="grid min-h-dvh lg:grid-cols-[1.15fr_0.85fr]">
-      <section className="relative hidden overflow-hidden text-white lg:flex lg:flex-col lg:justify-between" style={{ background: "var(--gradient-brand)" }}>
+      <section className="bg-brand relative hidden overflow-hidden text-white lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute -top-24 -left-16 size-80 rounded-full bg-white/10" />
         <div className="pointer-events-none absolute right-[-4rem] bottom-[-3rem] size-96 rounded-full bg-sky/25" />
         <div className="pointer-events-none absolute top-1/2 right-16 hidden -translate-y-1/2 xl:block">
@@ -30,7 +30,10 @@ async function Body() {
           </div>
         </div>
         <div className="relative px-12 pt-12">
-          <p className="text-xs font-medium tracking-[0.22em] text-white/80">LIÊN VIỆT DOOR</p>
+          <div className="inline-flex items-center gap-3 rounded-2xl bg-white px-3 py-2 shadow-[var(--shadow-card)]">
+            <img src="/logo-lien-viet.png" alt="" className="h-12 w-auto" />
+            <p className="text-xs font-semibold tracking-[0.18em] text-navy">LIÊN VIỆT DOOR</p>
+          </div>
         </div>
         <div className="relative max-w-xl px-12 pb-16">
           <h1 className="text-4xl font-semibold leading-tight">Cửa nhôm kính cho từng công trình</h1>
@@ -42,12 +45,18 @@ async function Body() {
       </section>
       <section className="flex items-center justify-center bg-page px-5 py-10">
         <div className="w-full max-w-[420px]">
-          <div className="mb-8 overflow-hidden rounded-[18px] text-white lg:hidden" style={{ background: "var(--gradient-brand)" }}>
-            <div className="px-5 py-4">
-              <p className="text-xs tracking-[0.18em] text-white/80">LIÊN VIỆT DOOR</p>
-              <p className="mt-1 text-lg font-semibold">Cửa nhôm kính cho từng công trình</p>
+          <div className="bg-brand mb-8 overflow-hidden rounded-[18px] text-white lg:hidden">
+            <div className="flex items-center gap-3 px-5 py-4">
+              <span className="inline-flex rounded-xl bg-white px-2 py-1">
+                <img src="/logo-lien-viet.png" alt="" className="h-10 w-auto" />
+              </span>
+              <span>
+                <p className="text-xs tracking-[0.18em] text-white/80">LIÊN VIỆT DOOR</p>
+                <p className="mt-1 text-lg font-semibold">Cửa nhôm kính cho từng công trình</p>
+              </span>
             </div>
           </div>
+          <img src="/logo-lien-viet.png" alt="Liên Việt Door" className="mb-5 h-14 w-auto" />
           <p className="text-sm font-medium text-primary">Nội bộ</p>
           <h2 className="mt-2 text-3xl font-semibold text-ink">Đăng nhập</h2>
           <p className="mt-2 text-sm leading-6 text-muted">Nhập tên đăng nhập và mật khẩu. Quyền gắn theo vai trò, không theo chức danh.</p>

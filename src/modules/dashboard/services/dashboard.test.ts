@@ -156,6 +156,9 @@ describe("điều hướng theo quyền và trạng thái module", () => {
     assert.equal(supply?.items[0]?.state, "disabled");
     assert.equal(supply?.items[1]?.state, "link");
     assert.equal(buildNavigation(user("ha")).some((group) => group.id === "cung-ung"), false);
+    const hr = minh.find((group) => group.id === "nhan-su");
+    assert.deepEqual(hr?.items.map((item) => item.label), ["Nhân viên", "Phòng ban", "Chức vụ", "Chức danh"]);
+    assert.equal(minh.find((group) => group.id === "he-thong")?.items.some((item) => item.label === "Nhân viên"), false);
     const sales = buildNavigation(user("ha")).find((group) => group.id === "kinh-doanh");
     assert.deepEqual(
       sales?.items.map((item) => item.label),

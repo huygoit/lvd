@@ -25,7 +25,7 @@ function SheetOverlay({ className, ...props }: React.ComponentProps<typeof Sheet
   return (
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
-      className={cn("fixed inset-0 z-50 bg-[#0B1F44]/45", className)}
+      className={cn("fixed inset-0 z-50 bg-navy/45", className)}
       {...props}
     />
   )

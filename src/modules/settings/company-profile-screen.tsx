@@ -210,14 +210,14 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
 
       <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <section className="overflow-hidden rounded-[18px] border border-line bg-white shadow-[var(--shadow-card)]">
-          <div className="h-24 bg-gradient-to-r from-[#1d4ed8] via-[#1e40af] to-[#0f172a]" />
+          <div className="bg-brand h-24" />
           <div className="px-5 pb-5 sm:px-6">
             <div className="-mt-10 flex items-end gap-4">
               <div className="relative">
                 {logo ? (
                   <img src={`/api/cai-dat/ho-so-cong-ty/logo?v=${logo}`} alt="Logo Liên Việt Door" className="size-24 rounded-2xl border-4 border-white bg-white object-contain shadow-[var(--shadow-card)]" />
                 ) : (
-                  <div className="grid size-24 place-items-center rounded-2xl border-4 border-white bg-[#1d4ed8] text-lg font-semibold tracking-wide text-white shadow-[var(--shadow-card)]">LVD</div>
+                  <div className="bg-brand grid size-24 place-items-center rounded-2xl border-4 border-white text-lg font-semibold tracking-wide text-white shadow-[var(--shadow-card)]">LVD</div>
                 )}
               </div>
               <div className="flex flex-wrap gap-2 pb-1">

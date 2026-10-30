@@ -197,7 +197,7 @@ function Home({ givenName, onOpen, quyen }: { givenName: string; onOpen: (view: 
   ].filter((item) => item !== null);
   return (
     <div className="space-y-4">
-      <header className="rounded-[24px] bg-gradient-to-br from-[#0B1F44] to-[#1d4ed8] px-5 py-6 text-white shadow-[var(--shadow-card)]">
+      <header className="bg-brand rounded-[24px] px-5 py-6 text-white shadow-[var(--shadow-card)]">
         <p className="text-sm text-white/75">Đội thi công</p>
         <h1 className="mt-1 text-[28px] font-semibold leading-tight">Xin chào, {givenName}</h1>
         <p className="mt-2 text-sm leading-5 text-white/80">Chọn một việc. Mỗi phiếu chỉ một công trình.</p>

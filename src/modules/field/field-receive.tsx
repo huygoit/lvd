@@ -202,7 +202,7 @@ export function ReceiveScreen({ slipId, onBack, noi = "cong_trinh" }: { slipId: 
         {loading && !detail ? <p className="text-sm text-muted">Đang mở phiếu...</p> : null}
         {detail ? (
           <>
-            <header className="rounded-[24px] bg-gradient-to-br from-[#0B1F44] to-[#1d4ed8] px-5 py-5 text-white shadow-[var(--shadow-card)]">
+            <header className="bg-brand rounded-[24px] px-5 py-5 text-white shadow-[var(--shadow-card)]">
               <p className="text-sm text-white/75">{detail.code} · {detail.sourceLabel}</p>
               <h1 className="mt-1 text-2xl font-semibold leading-tight">{detail.projectName}</h1>
               <p className="mt-2 text-sm text-white/80">{detail.projectCode}. {detail.expectedAt ? `Dự kiến ${gioDen(detail.expectedAt)}. ` : ""}Hàng nhận rồi vẫn chưa phải đã lắp.</p>
@@ -297,7 +297,7 @@ export function ReceiveScreen({ slipId, onBack, noi = "cong_trinh" }: { slipId: 
           Về màn hình chính
         </button>
       ) : null}
-      <header className="rounded-[24px] bg-gradient-to-br from-[#0B1F44] to-[#1d4ed8] px-5 py-6 text-white shadow-[var(--shadow-card)]">
+      <header className="bg-brand rounded-[24px] px-5 py-6 text-white shadow-[var(--shadow-card)]">
         <p className="text-sm text-white/75">{noi === "kho" ? "Kho công ty" : noi === "xuong" ? "Xưởng" : "Công trình"}</p>
         <h1 className="mt-1 text-[28px] font-semibold leading-tight">Xác nhận vật tư</h1>
         <p className="mt-2 text-sm leading-5 text-white/80">{noi === "cong_trinh" ? "Khi hàng tới, chụp ảnh và ghi số thực nhận. Nhận hàng chưa phải đã lắp." : "Khi hàng tới, ghi số thực nhận."}</p>

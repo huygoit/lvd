@@ -40,6 +40,7 @@ export type NavItem = {
   id: string;
   label: string;
   href?: string;
+  icon?: string;
   state: "link" | "disabled";
   badge?: string;
 };
@@ -48,6 +49,7 @@ export type NavGroup = {
   id: string;
   label: string;
   href?: string;
+  icon?: string;
   items: NavItem[];
 };
 
@@ -55,6 +57,7 @@ type Screen = {
   id: string;
   label: string;
   href?: string;
+  icon?: string;
   module: ModuleId;
   ready: boolean;
   caps: Capability[];
@@ -64,18 +67,21 @@ type GroupDef = {
   id: string;
   label: string;
   href?: string;
+  icon?: string;
   items?: Screen[];
 };
 
 const groups: GroupDef[] = [
-  { id: "tong-quan", label: "Tổng quan", href: routes.home },
+  { id: "tong-quan", label: "Tổng quan", href: routes.home, icon: "layout-dashboard" },
   {
     id: "kinh-doanh",
     label: "Kinh doanh",
+    icon: "handshake",
     items: [
       {
         id: "khach-hang",
         label: "Khách hàng",
+        icon: "contact",
         href: routes.customers,
         module: "customers",
         ready: true,
@@ -84,6 +90,7 @@ const groups: GroupDef[] = [
       {
         id: "bao-gia",
         label: "Báo giá",
+        icon: "file-text",
         href: routes.quotations,
         module: "quotations",
         ready: true,
@@ -92,6 +99,7 @@ const groups: GroupDef[] = [
       {
         id: "hop-dong",
         label: "Hợp đồng",
+        icon: "file-signature",
         href: routes.contracts,
         module: "contracts",
         ready: true,
@@ -100,12 +108,57 @@ const groups: GroupDef[] = [
     ],
   },
   {
+    id: "nhan-su",
+    label: "Nhân sự",
+    icon: "users",
+    items: [
+      {
+        id: "nhan-vien",
+        label: "Nhân viên",
+        icon: "user-round",
+        href: routes.employees,
+        module: "system",
+        ready: true,
+        caps: ["settings.manage"],
+      },
+      {
+        id: "phong-ban",
+        label: "Phòng ban",
+        icon: "network",
+        href: routes.departments,
+        module: "system",
+        ready: true,
+        caps: ["settings.manage"],
+      },
+      {
+        id: "chuc-vu",
+        label: "Chức vụ",
+        icon: "id-card",
+        href: routes.positions,
+        module: "system",
+        ready: true,
+        caps: ["settings.manage"],
+      },
+      {
+        id: "chuc-danh",
+        label: "Chức danh",
+        icon: "badge-check",
+        href: routes.jobTitles,
+        module: "system",
+        ready: true,
+        caps: ["settings.manage"],
+      },
+    ],
+  },
+  {
     id: "cong-trinh",
     label: "Công trình",
+    icon: "building-2",
     items: [
       {
         id: "danh-sach-cong-trinh",
         label: "Danh sách công trình",
+        icon: "building-2",
         href: routes.projects,
         module: "projects",
         ready: true,
@@ -114,6 +167,7 @@ const groups: GroupDef[] = [
       {
         id: "thiet-ke",
         label: "Thiết kế/bóc tách",
+        icon: "pen-tool",
         module: "engineering",
         ready: false,
         caps: ["engineering.view"],
@@ -121,6 +175,7 @@ const groups: GroupDef[] = [
       {
         id: "tien-do",
         label: "Tiến độ",
+        icon: "calendar-range",
         module: "projects",
         ready: false,
         caps: ["projects.view", "projects.view.assigned"],
@@ -128,6 +183,7 @@ const groups: GroupDef[] = [
       {
         id: "ho-so",
         label: "Hồ sơ công trình",
+        icon: "folder-open",
         module: "projects",
         ready: false,
         caps: ["projects.view", "projects.view.assigned"],
@@ -137,10 +193,12 @@ const groups: GroupDef[] = [
   {
     id: "cung-ung",
     label: "Cung ứng",
+    icon: "boxes",
     items: [
       {
         id: "mua-hang",
         label: "Mua hàng",
+        icon: "shopping-cart",
         module: "procurement",
         ready: false,
         caps: ["procurement.view"],
@@ -148,6 +206,7 @@ const groups: GroupDef[] = [
       {
         id: "doi-tac",
         label: "Đối tác",
+        icon: "handshake",
         href: routes.partners,
         module: "partners",
         ready: true,
@@ -156,6 +215,7 @@ const groups: GroupDef[] = [
       {
         id: "danh-muc-vat-tu",
         label: "Danh mục vật tư",
+        icon: "boxes",
         href: routes.materials,
         module: "inventory",
         ready: true,
@@ -164,6 +224,7 @@ const groups: GroupDef[] = [
       {
         id: "kho",
         label: "Kho/vật tư",
+        icon: "warehouse",
         href: routes.stock,
         module: "inventory",
         ready: true,
@@ -172,6 +233,7 @@ const groups: GroupDef[] = [
       {
         id: "nhan-kho",
         label: "Nhận tại kho",
+        icon: "package-check",
         href: routes.receiveWarehouse,
         module: "inventory",
         ready: true,
@@ -180,6 +242,7 @@ const groups: GroupDef[] = [
       {
         id: "van-chuyen",
         label: "Vận chuyển",
+        icon: "truck",
         href: routes.projects,
         module: "partners",
         ready: true,
@@ -190,10 +253,12 @@ const groups: GroupDef[] = [
   {
     id: "san-xuat",
     label: "Sản xuất & thi công",
+    icon: "hard-hat",
     items: [
       {
         id: "hien-truong",
         label: "Hiện trường",
+        icon: "hard-hat",
         href: routes.field,
         module: "installation",
         ready: true,
@@ -202,6 +267,7 @@ const groups: GroupDef[] = [
       {
         id: "nhan-xuong",
         label: "Nhận tại xưởng",
+        icon: "factory",
         href: routes.receiveWorkshop,
         module: "installation",
         ready: true,
@@ -210,6 +276,7 @@ const groups: GroupDef[] = [
       {
         id: "gia-cong-noi-bo",
         label: "Gia công nội bộ",
+        icon: "wrench",
         module: "fabrication",
         ready: false,
         caps: ["fabrication.view"],
@@ -217,6 +284,7 @@ const groups: GroupDef[] = [
       {
         id: "gia-cong-thue",
         label: "Gia công thuê ngoài",
+        icon: "factory",
         href: routes.projects,
         module: "fabrication",
         ready: true,
@@ -225,6 +293,7 @@ const groups: GroupDef[] = [
       {
         id: "lap-dat",
         label: "Giao hàng/lắp đặt",
+        icon: "hammer",
         module: "installation",
         ready: false,
         caps: ["installation.view"],
@@ -232,6 +301,7 @@ const groups: GroupDef[] = [
       {
         id: "bao-hanh",
         label: "Chất lượng/bảo hành",
+        icon: "shield-check",
         module: "quality",
         ready: false,
         caps: ["quality.view"],
@@ -241,10 +311,12 @@ const groups: GroupDef[] = [
   {
     id: "tai-chinh",
     label: "Tài chính",
+    icon: "wallet",
     items: [
       {
         id: "thu-chi",
         label: "Thu chi",
+        icon: "arrow-left-right",
         module: "finance",
         ready: false,
         caps: ["finance.cashflow.view"],
@@ -252,6 +324,7 @@ const groups: GroupDef[] = [
       {
         id: "cong-no",
         label: "Công nợ",
+        icon: "receipt",
         module: "finance",
         ready: false,
         caps: ["finance.receivables.view"],
@@ -259,6 +332,7 @@ const groups: GroupDef[] = [
       {
         id: "tam-ung",
         label: "Tạm ứng",
+        icon: "banknote",
         module: "finance",
         ready: false,
         caps: ["finance.cashflow.view"],
@@ -266,6 +340,7 @@ const groups: GroupDef[] = [
       {
         id: "chi-phi",
         label: "Chi phí công trình",
+        icon: "calculator",
         module: "finance",
         ready: false,
         caps: ["finance.cashflow.view"],
@@ -273,6 +348,7 @@ const groups: GroupDef[] = [
       {
         id: "dong-tien",
         label: "Dòng tiền",
+        icon: "line-chart",
         module: "finance",
         ready: false,
         caps: ["finance.cashflow.view"],
@@ -282,10 +358,12 @@ const groups: GroupDef[] = [
   {
     id: "bao-cao",
     label: "Báo cáo",
+    icon: "chart-column",
     items: [
       {
         id: "bao-cao-cong-trinh",
         label: "Báo cáo công trình",
+        icon: "building-2",
         module: "reports",
         ready: false,
         caps: ["reports.view"],
@@ -293,6 +371,7 @@ const groups: GroupDef[] = [
       {
         id: "bao-cao-vat-tu",
         label: "Vật tư/gia công",
+        icon: "boxes",
         module: "reports",
         ready: false,
         caps: ["reports.view"],
@@ -300,6 +379,7 @@ const groups: GroupDef[] = [
       {
         id: "bao-cao-tai-chinh",
         label: "Tài chính quản trị",
+        icon: "pie-chart",
         module: "reports",
         ready: false,
         caps: ["reports.view"],
@@ -309,10 +389,12 @@ const groups: GroupDef[] = [
   {
     id: "he-thong",
     label: "Hệ thống",
+    icon: "settings",
     items: [
       {
         id: "ho-so-cong-ty",
         label: "Hồ sơ công ty",
+        icon: "building",
         href: routes.companyProfile,
         module: "system",
         ready: true,
@@ -321,6 +403,7 @@ const groups: GroupDef[] = [
       {
         id: "cai-dat",
         label: "Cài đặt",
+        icon: "settings",
         href: routes.settings,
         module: "system",
         ready: true,
@@ -329,6 +412,7 @@ const groups: GroupDef[] = [
       {
         id: "sao-luu",
         label: "Sao lưu",
+        icon: "database-backup",
         href: routes.backup,
         module: "system",
         ready: true,
@@ -337,39 +421,8 @@ const groups: GroupDef[] = [
       {
         id: "hang-muc-bao-gia",
         label: "Hạng mục báo giá",
+        icon: "list-tree",
         href: routes.quoteCategories,
-        module: "system",
-        ready: true,
-        caps: ["settings.manage"],
-      },
-      {
-        id: "chuc-danh",
-        label: "Chức danh",
-        href: routes.jobTitles,
-        module: "system",
-        ready: true,
-        caps: ["settings.manage"],
-      },
-      {
-        id: "phong-ban",
-        label: "Phòng ban",
-        href: routes.departments,
-        module: "system",
-        ready: true,
-        caps: ["settings.manage"],
-      },
-      {
-        id: "chuc-vu",
-        label: "Chức vụ",
-        href: routes.positions,
-        module: "system",
-        ready: true,
-        caps: ["settings.manage"],
-      },
-      {
-        id: "nhan-vien",
-        label: "Nhân viên",
-        href: routes.employees,
         module: "system",
         ready: true,
         caps: ["settings.manage"],
@@ -377,6 +430,7 @@ const groups: GroupDef[] = [
       {
         id: "vai-tro",
         label: "Vai trò và quyền",
+        icon: "shield",
         href: routes.roles,
         module: "system",
         ready: true,
@@ -385,6 +439,7 @@ const groups: GroupDef[] = [
       {
         id: "nguoi-dung",
         label: "Người dùng",
+        icon: "key-round",
         href: routes.users,
         module: "system",
         ready: true,
@@ -393,6 +448,7 @@ const groups: GroupDef[] = [
       {
         id: "cau-hinh",
         label: "Cấu hình công ty",
+        icon: "sliders-horizontal",
         module: "system",
         ready: false,
         caps: ["system.view"],
@@ -409,7 +465,7 @@ function screenState(screen: Screen): NavItem["state"] {
 export function buildNavigation(user: User): NavGroup[] {
   return groups.flatMap((group) => {
     if (!group.items) {
-      return [{ id: group.id, label: group.label, href: group.href, items: [] }];
+      return [{ id: group.id, label: group.label, href: group.href, icon: group.icon, items: [] }];
     }
     const items = group.items.flatMap((screen) => {
       if (!hasAnyCapability(user, screen.caps)) return [];
@@ -419,12 +475,13 @@ export function buildNavigation(user: User): NavGroup[] {
           id: screen.id,
           label: screen.label,
           href: state === "link" ? screen.href : undefined,
+          icon: screen.icon,
           state,
           badge: state === "disabled" ? "Sắp triển khai" : undefined,
         } satisfies NavItem,
       ];
     });
     if (items.length === 0) return [];
-    return [{ id: group.id, label: group.label, items }];
+    return [{ id: group.id, label: group.label, icon: group.icon, items }];
   });
 }

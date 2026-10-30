@@ -14,6 +14,7 @@ export const metadata: Metadata = {
     template: "%s · Liên Việt Door",
   },
   description: "Quản lý công trình và vận hành",
+  icons: { icon: "/logo-lien-viet.png" },
   robots: { index: false, follow: false },
 };
 

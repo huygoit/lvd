@@ -17,7 +17,7 @@ function AlertDialogOverlay({ className, ...props }: React.ComponentProps<typeof
   return (
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
-      className={cn("fixed inset-0 z-[70] bg-[#0B1F44]/45", className)}
+      className={cn("fixed inset-0 z-[70] bg-navy/45", className)}
       {...props}
     />
   )

@@ -3,7 +3,49 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { Bell, ChevronDown, LogOut, Menu, PackageCheck, Search, Truck, X } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Menu, Search, X, type LucideIcon } from "lucide-react";
+import {
+  ArrowLeftRight,
+  BadgeCheck,
+  Banknote,
+  BarChart3,
+  Boxes,
+  Building,
+  Building2,
+  Calculator,
+  CalendarRange,
+  Contact,
+  DatabaseBackup,
+  Ellipsis,
+  Factory,
+  FileText,
+  FolderOpen,
+  Hammer,
+  Handshake,
+  HardHat,
+  IdCard,
+  KeyRound,
+  LayoutDashboard,
+  LineChart,
+  ListTree,
+  Network,
+  PackageCheck,
+  PenTool,
+  PieChart,
+  Receipt,
+  ScrollText,
+  Settings,
+  Shield,
+  ShieldCheck,
+  ShoppingCart,
+  SlidersHorizontal,
+  Truck,
+  UserRound,
+  Users,
+  Wallet,
+  Warehouse,
+  Wrench,
+} from "lucide-react";
 import { callApi } from "@/shared/client/api";
 import type { NavGroup } from "@/shared/config/navigation";
 import { routes } from "@/shared/config/routes";
@@ -13,7 +55,56 @@ import type { Attention, SearchGroup } from "@/modules/dashboard/types";
 
 type Account = { name: string; roleLabel: string; initials: string };
 
-const primaryIds = new Set(["tong-quan", "kinh-doanh", "cong-trinh"]);
+const primaryIds = new Set(["tong-quan", "kinh-doanh", "nhan-su", "cong-trinh"]);
+
+const navIcons: Record<string, LucideIcon> = {
+  "layout-dashboard": LayoutDashboard,
+  handshake: Handshake,
+  users: Users,
+  "building-2": Building2,
+  boxes: Boxes,
+  "hard-hat": HardHat,
+  wallet: Wallet,
+  "chart-column": BarChart3,
+  settings: Settings,
+  contact: Contact,
+  "file-text": FileText,
+  "file-signature": ScrollText,
+  "pen-tool": PenTool,
+  "calendar-range": CalendarRange,
+  "folder-open": FolderOpen,
+  "shopping-cart": ShoppingCart,
+  warehouse: Warehouse,
+  "package-check": PackageCheck,
+  truck: Truck,
+  factory: Factory,
+  wrench: Wrench,
+  hammer: Hammer,
+  "shield-check": ShieldCheck,
+  "arrow-left-right": ArrowLeftRight,
+  receipt: Receipt,
+  banknote: Banknote,
+  calculator: Calculator,
+  "line-chart": LineChart,
+  "pie-chart": PieChart,
+  building: Building,
+  "database-backup": DatabaseBackup,
+  "list-tree": ListTree,
+  "user-round": UserRound,
+  network: Network,
+  "id-card": IdCard,
+  "badge-check": BadgeCheck,
+  shield: Shield,
+  "key-round": KeyRound,
+  "sliders-horizontal": SlidersHorizontal,
+  ellipsis: Ellipsis,
+};
+
+function NavMark({ name, className }: { name?: string; className?: string }) {
+  const Icon = name ? navIcons[name] : undefined;
+  if (!Icon) return null;
+  return <Icon className={className} aria-hidden />;
+}
 
 export function AppChrome({
   account,
@@ -42,7 +133,7 @@ export function AppChrome({
   const extra = groups.filter((group) => !primaryIds.has(group.id));
 
   return (
-    <div className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur-sm">
+    <div className="thanh-tren sticky top-0 z-40 border-b border-line backdrop-blur-md">
       <header className="mx-auto flex h-16 w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
         <Wordmark compact />
         <div className="hidden min-w-0 flex-1 justify-center md:flex">
@@ -101,25 +192,37 @@ export function AppChrome({
         <div className="space-y-1 overflow-y-auto p-3">
           {groups.map((group) =>
             group.href ? (
-              <Link key={group.id} href={group.href} className={cn("flex min-h-11 items-center rounded-[12px] px-3 text-sm font-medium", focusRing)} onClick={closeMenu}>
+              <Link key={group.id} href={group.href} className={cn("flex min-h-11 items-center gap-2 rounded-[12px] px-3 text-sm font-medium", focusRing)} onClick={closeMenu}>
+                <NavMark name={group.icon} className="size-4 text-navy" />
                 {group.label}
               </Link>
             ) : (
               <details key={group.id} className="rounded-[12px] border border-line">
                 <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-medium">
-                  {group.label}
+                  <span className="inline-flex items-center gap-2">
+                    <NavMark name={group.icon} className="size-4 text-navy" />
+                    {group.label}
+                  </span>
                   <ChevronDown className="size-4 text-muted" />
                 </summary>
                 <div className="space-y-1 px-2 pb-2">
                   {group.items.map((item) =>
                     item.state === "link" && item.href ? (
-                      <Link key={item.id} href={item.href} className={cn("flex min-h-11 items-center rounded-[10px] px-3 text-sm", focusRing)} onClick={closeMenu}>
+                      <Link key={item.id} href={item.href} className={cn("flex min-h-11 items-center gap-2.5 rounded-[10px] px-2 text-sm", focusRing)} onClick={closeMenu}>
+                        <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-soft text-navy">
+                          <NavMark name={item.icon} className="size-4" />
+                        </span>
                         {item.label}
                       </Link>
                     ) : (
-                      <p key={item.id} className="flex min-h-11 items-center justify-between px-3 text-sm text-muted">
-                        {item.label}
-                        <span className="text-[11px]">{item.badge}</span>
+                      <p key={item.id} className="flex min-h-11 items-center justify-between gap-2 px-2 text-sm text-muted">
+                        <span className="inline-flex items-center gap-2.5">
+                          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-page text-muted">
+                            <NavMark name={item.icon} className="size-4" />
+                          </span>
+                          {item.label}
+                        </span>
+                        {item.badge ? <span className="text-[11px]">{item.badge}</span> : null}
                       </p>
                     ),
                   )}
@@ -166,11 +269,12 @@ function NavEntry({ group }: { group: NavGroup }) {
         href={group.href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "inline-flex min-h-11 items-center rounded-[12px] px-3 text-sm font-medium text-slate-700",
+          "inline-flex min-h-11 items-center gap-1.5 rounded-[12px] px-3 text-sm font-medium text-slate-700",
           focusRing,
           active && "bg-soft font-semibold text-deep",
         )}
       >
+        <NavMark name={group.icon} className="size-4 text-navy" />
         {group.label}
       </Link>
     );
@@ -182,7 +286,7 @@ function NavEntry({ group }: { group: NavGroup }) {
         ref={buttonRef}
         type="button"
         className={cn(
-          "inline-flex min-h-11 items-center gap-1 rounded-[12px] px-3 text-sm font-medium text-slate-700",
+          "inline-flex min-h-11 items-center gap-1.5 rounded-[12px] px-3 text-sm font-medium text-slate-700",
           focusRing,
           active && "bg-soft font-semibold text-deep",
         )}
@@ -190,27 +294,36 @@ function NavEntry({ group }: { group: NavGroup }) {
         aria-controls={menuId}
         onClick={() => setOpen((value) => !value)}
       >
+        <NavMark name={group.icon} className="size-4 text-navy" />
         {group.label}
         <ChevronDown className="size-4" />
       </button>
       {open ? (
-        <div id={menuId} role="menu" className="absolute left-0 top-12 z-50 w-64 rounded-[14px] border border-line bg-white p-1.5 shadow-[var(--shadow-card)]">
+        <div id={menuId} role="menu" className="absolute left-0 top-12 z-50 w-72 rounded-[14px] border border-line bg-white p-1.5 shadow-[var(--shadow-card)]">
           {group.items.map((item) =>
             item.state === "link" && item.href ? (
               <Link
                 key={item.id}
                 role="menuitem"
                 href={item.href}
-                className={cn("flex min-h-11 items-center rounded-[10px] px-3 text-sm text-ink hover:bg-soft", focusRing)}
+                className={cn("flex min-h-11 items-center gap-2.5 rounded-[10px] px-2 text-sm text-ink hover:bg-soft", focusRing)}
                 aria-current={pathname.startsWith(item.href) ? "page" : undefined}
                 onClick={() => setOpen(false)}
               >
+                <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-soft text-navy">
+                  <NavMark name={item.icon} className="size-4" />
+                </span>
                 {item.label}
               </Link>
             ) : (
-              <button key={item.id} type="button" role="menuitem" disabled className="flex min-h-11 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm text-muted">
-                {item.label}
-                <span className="text-[11px]">{item.badge}</span>
+              <button key={item.id} type="button" role="menuitem" disabled className="flex min-h-11 w-full items-center justify-between gap-2 rounded-[10px] px-2 text-left text-sm text-muted">
+                <span className="inline-flex min-w-0 items-center gap-2.5">
+                  <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-page text-muted">
+                    <NavMark name={item.icon} className="size-4" />
+                  </span>
+                  <span className="truncate">{item.label}</span>
+                </span>
+                {item.badge ? <span className="shrink-0 text-[11px]">{item.badge}</span> : null}
               </button>
             ),
           )}
@@ -221,7 +334,20 @@ function NavEntry({ group }: { group: NavGroup }) {
 }
 
 function MoreMenu({ groups }: { groups: NavGroup[] }) {
-  return <NavEntry group={{ id: "them", label: "Thêm", items: groups.flatMap((group) => group.items.length ? [{ id: group.id, label: group.label, state: "disabled" as const, badge: "" }, ...group.items] : []) }} />;
+  return (
+    <NavEntry
+      group={{
+        id: "them",
+        label: "Thêm",
+        icon: "ellipsis",
+        items: groups.flatMap((group) =>
+          group.items.length
+            ? [{ id: group.id, label: group.label, icon: group.icon, state: "disabled" as const, badge: "" }, ...group.items]
+            : [],
+        ),
+      }}
+    />
+  );
 }
 
 function SearchBox() {

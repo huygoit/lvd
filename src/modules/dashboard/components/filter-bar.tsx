@@ -37,7 +37,7 @@ export function FilterBar({ filters, owners }: { filters: ResolvedFilters; owner
   }
 
   return (
-    <div className="rounded-[14px] bg-[#0B1F44]/45 p-3 ring-1 ring-white/15" aria-busy={pending}>
+    <div className="rounded-[14px] bg-navy/40 p-3 ring-1 ring-white/20" aria-busy={pending}>
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-40 flex-1">
           <label htmlFor="ky" className="mb-1 block text-[11px] font-medium text-white/80">

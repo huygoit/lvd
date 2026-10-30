@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AppWindow, Boxes, Download, FileUp, Ruler } from "lucide-react";
+import { AppWindow, Boxes, Download, FileUp, FolderOpen, Ruler } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/shared/components/ui/sheet";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
@@ -525,8 +525,9 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
             </div>
           </div>
           {canEdit ? (
-            <label className="inline-flex h-10 cursor-pointer items-center rounded-xl bg-primary px-4 text-sm font-semibold text-white">
-              Chọn file PDF
+            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white">
+              <FolderOpen className="size-4" aria-hidden />
+              Nạp đơn hàng từ PDF
               <input type="file" accept="application/pdf" className="sr-only" onChange={(event) => { void onFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
             </label>
           ) : null}

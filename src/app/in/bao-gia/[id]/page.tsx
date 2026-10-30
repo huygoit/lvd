@@ -67,7 +67,7 @@ async function Body({
         @media print { .no-print { display: none !important; } }
         .sheet table { width: 100%; border-collapse: collapse; font-size: 11px; }
         .sheet th, .sheet td { border: 1px solid #cbd5e1; padding: 4px 5px; vertical-align: top; }
-        .sheet th { background: #0b1f44; color: white; font-weight: 600; text-align: center; }
+        .sheet th { background: #067a9e; color: white; font-weight: 600; text-align: center; }
         .sheet .num { text-align: right; white-space: nowrap; }
         .sheet .sum td { font-weight: 700; background: #f8fafc; }
         .watermark { position: fixed; inset: 35% 8%; z-index: 1; display: flex; align-items: center; justify-content: center; font-size: 72px; font-weight: 700; color: rgba(185, 28, 28, 0.16); transform: rotate(-22deg); pointer-events: none; }
