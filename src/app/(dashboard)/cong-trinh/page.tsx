@@ -38,6 +38,10 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
   }
   const canCreate = hasCapability(user, "projects.create");
   const canEdit = hasAnyCapability(user, ["projects.update", "projects.create"]);
+  const canSeeFabrication = hasCapability(user, "fabrication.view") || canEdit;
+  const canEditFabrication = hasAnyCapability(user, ["fabrication.create", "fabrication.update", "projects.update", "projects.create"]);
+  const canSeeTransport = hasCapability(user, "transport.view") || canEdit;
+  const canEditTransport = hasAnyCapability(user, ["transport.create", "transport.update", "projects.update", "projects.create"]);
   const staff = await listStaff();
   const names = new Map(staff.map((item) => [item.id, item.name]));
   let customers: Awaited<ReturnType<typeof customerOptions>> = [];
@@ -55,6 +59,10 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
       canCreate={canCreate}
       canEdit={canEdit}
       canSeeShared={thayChiPhiChung(user)}
+      canSeeFabrication={canSeeFabrication}
+      canEditFabrication={canEditFabrication}
+      canSeeTransport={canSeeTransport}
+      canEditTransport={canEditTransport}
       canQuote={hasCapability(user, "quotations.create")}
       staff={staff.map((item) => ({ id: item.id, name: item.name }))}
       customers={customers}

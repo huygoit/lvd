@@ -5,6 +5,8 @@ import { assertOwn } from "@/modules/system/access";
 import { costCategoryLabel, type CostCategory } from "@/modules/projects/cost-fields";
 import { hangMucAmount } from "@/modules/projects/item-fields";
 import { orderLineAmount } from "@/modules/projects/orders";
+import { tongChiPhiGiaCong } from "@/modules/fabrication/service";
+import { tongChiPhiVanChuyen } from "@/modules/transport/service";
 import { thayChiPhiChung } from "@/modules/projects/shared-costs";
 import { tinhSoTongQuan, type NhomChiPhi, type SoTongQuan } from "@/modules/projects/overview-figures";
 
@@ -35,7 +37,7 @@ export async function readProjectOverview(user: User, projectId: string): Promis
   if (!project) throw new AppError("Không tìm thấy công trình.", 404);
   assertOwn(user, "projects.view", "projects.view.assigned", project.ownerId);
 
-  const [hangMuc, chiPhi, donHang, chung, hoSo] = await Promise.all([
+  const [hangMuc, chiPhi, donHang, chung, hoSo, tienGiaCong, tienVanChuyen] = await Promise.all([
     prisma.projectItem.findMany({
       where: { projectId },
       select: { unitPrice: true, quantityMilli: true },
@@ -54,6 +56,8 @@ export async function readProjectOverview(user: User, projectId: string): Promis
       orderBy: { name: "asc" },
     }),
     prisma.companyProfile.findUnique({ where: { id: HO_SO_CONG_TY }, select: { incomeTaxBps: true } }),
+    tongChiPhiGiaCong(projectId),
+    tongChiPhiVanChuyen(projectId),
   ]);
 
   const theoNhom = new Map<string, number>();
@@ -78,6 +82,8 @@ export async function readProjectOverview(user: User, projectId: string): Promis
     tyLeChungBps: thay ? chung.map((dong) => dong.rateBps) : [],
     tienDonHang,
     tienCongTrinh: tienChi.reduce((tong, tien) => tong + tien, 0),
+    tienGiaCong,
+    tienVanChuyen,
     thueTndnBps: hoSo?.incomeTaxBps ?? null,
   });
   return {

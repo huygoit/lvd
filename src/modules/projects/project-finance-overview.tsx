@@ -15,6 +15,8 @@ function chuThichChiPhi(bang: Bang) {
   const phan = [
     ...(bang.hienChiPhiChung ? ["chi phí chung"] : []),
     "đơn hàng đã lưu",
+    "gia công thuê ngoài",
+    "vận chuyển",
     "chi phí công trình",
   ];
   const cau = phan.join(" + ");
@@ -234,7 +236,7 @@ export function ProjectFinanceOverview({
             </section>
             <section className="rounded-[18px] border border-line bg-white px-5 py-5 shadow-[var(--shadow-card)]">
               <h3 className="text-base font-semibold">Nguồn chi phí</h3>
-              <p className="mt-1 text-sm text-muted">{bang.hienChiPhiChung ? "Chi phí chung tính trên tổng doanh thu sau thuế của hạng mục. " : ""}Thuế thu nhập = (doanh thu sau thuế − đơn hàng − chi phí công trình) × % hồ sơ công ty.</p>
+              <p className="mt-1 text-sm text-muted">{bang.hienChiPhiChung ? "Chi phí chung tính trên tổng doanh thu sau thuế của hạng mục. " : ""}Thuế thu nhập = (doanh thu sau thuế − đơn hàng − gia công − vận chuyển − chi phí công trình) × % hồ sơ công ty.</p>
               <dl className="mt-3">
                 {bang.hienChiPhiChung ? (
                   <Dong
@@ -243,6 +245,8 @@ export function ProjectFinanceOverview({
                   />
                 ) : null}
                 <Dong nhan="Đơn hàng đã lưu" giaTri={formatVnd(bang.tienDonHang)} />
+                <Dong nhan="Gia công thuê ngoài" giaTri={formatVnd(bang.tienGiaCong)} />
+                <Dong nhan="Vận chuyển" giaTri={formatVnd(bang.tienVanChuyen)} />
                 <Dong nhan="Chi phí công trình" giaTri={formatVnd(bang.tienCongTrinh)} />
                 <Dong nhan="Tổng chi phí" giaTri={bang.tongChiPhi === null ? bang.thieuChiPhi ?? "—" : formatVnd(bang.tongChiPhi)} dam />
                 <Dong

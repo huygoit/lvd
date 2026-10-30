@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { todayYmd } from "@/shared/lib/dates";
 
-export async function nextCode(tx: Prisma.TransactionClient, key: "KH" | "CT" | "BG" | "HD" | "DT" | "PK" | "DH" | "YC" | "TD" | "CP" | "GH", now: Date) {
+export async function nextCode(tx: Prisma.TransactionClient, key: "KH" | "CT" | "BG" | "HD" | "DT" | "PK" | "DH" | "YC" | "TD" | "CP" | "GH" | "GC" | "VC", now: Date) {
   const year = Number(todayYmd(now).slice(0, 4));
   await tx.codeSequence.upsert({
     where: { key_year: { key, year } },

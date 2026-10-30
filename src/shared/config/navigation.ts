@@ -177,6 +177,14 @@ const groups: GroupDef[] = [
         ready: true,
         caps: ["receive.warehouse"],
       },
+      {
+        id: "van-chuyen",
+        label: "Vận chuyển",
+        href: routes.projects,
+        module: "partners",
+        ready: true,
+        caps: ["transport.view"],
+      },
     ],
   },
   {
@@ -209,8 +217,9 @@ const groups: GroupDef[] = [
       {
         id: "gia-cong-thue",
         label: "Gia công thuê ngoài",
+        href: routes.projects,
         module: "fabrication",
-        ready: false,
+        ready: true,
         caps: ["fabrication.view"],
       },
       {

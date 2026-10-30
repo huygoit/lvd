@@ -227,6 +227,8 @@ model Project {
   progressReports FieldProgressReport[]
   documents ProjectDocument[]
   sharedCosts ProjectSharedCost[]
+  fabricationContracts FabricationContract[]
+  transportContracts TransportContract[]
 
   @@index([customerId])
   @@index([ownerId])
@@ -750,6 +752,8 @@ model Partner {
   contacts            PartnerContact[]
   stockSlips          StockSlip[]
   orders              ProjectOrder[]
+  fabricationContracts FabricationContract[]
+  transportContracts TransportContract[]
 
   @@index([status])
   @@index([taxCode])
@@ -911,6 +915,126 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+// Hợp đồng thuê xưởng gia công theo công trình. Không gộp với hợp đồng thi công/mua bán với khách.
+// Chi phí = tổng thành tiền dòng đã lưu. Tạm ứng chỉ theo dõi tiền đã đưa xưởng, không cộng thêm vào chi phí.
+model FabricationContract {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id])
+  name       String   @default("")
+  // lvd_cap_vat_tu: Liên Việt đưa kính/vật tư. ncc_tron_goi: xưởng lo trọn.
+  supplyKind String   @default("lvd_cap_vat_tu")
+  // nhap | da_luu | ket_thuc
+  status     String   @default("nhap")
+  signedOn   String   @default("")
+  // Đơn giá m² mặc định khi thêm dòng. Có thể sửa từng dòng.
+  ratePerM2  Int?
+  note       String   @default("")
+  revision   Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lines      FabricationLine[]
+  advances   FabricationAdvance[]
+
+  @@index([projectId])
+  @@index([partnerId])
+  @@index([status])
+}
+
+model FabricationLine {
+  id             String              @id @default(cuid())
+  contractId     String
+  contract       FabricationContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  sortOrder      Int
+  name           String
+  unit           String              @default("m2")
+  widthMm        Int                 @default(0)
+  heightMm       Int                 @default(0)
+  // Số tấm hoặc bộ, ×1000.
+  quantityMilli  Int                 @default(0)
+  // Diện tích m² ×1000.
+  areaMilli      Int                 @default(0)
+  unitPrice      Int                 @default(0)
+  amount         Int                 @default(0)
+  note           String              @default("")
+
+  @@index([contractId])
+}
+
+model FabricationAdvance {
+  id         String              @id @default(cuid())
+  contractId String
+  contract   FabricationContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  occurredOn String
+  amount     Int
+  payerId    String              @default("")
+  note       String              @default("")
+  createdAt  DateTime            @default(now())
+
+  @@index([contractId])
+}
+
+// Hợp đồng thuê vận chuyển theo công trình. Không gộp với hợp đồng khách.
+// Chi phí = tổng thành tiền dòng đã lưu. Tạm ứng chỉ theo dõi tiền đã đưa nhà xe.
+model TransportContract {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id])
+  name       String   @default("")
+  // theo_chuyen | theo_tan | theo_kg | tron_goi
+  pricingKind String  @default("theo_chuyen")
+  // nhap | da_luu | ket_thuc
+  status     String   @default("nhap")
+  signedOn   String   @default("")
+  // Đơn giá mặc định khi thêm dòng.
+  unitPrice  Int?
+  note       String   @default("")
+  revision   Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lines      TransportLine[]
+  advances   TransportAdvance[]
+
+  @@index([projectId])
+  @@index([partnerId])
+  @@index([status])
+}
+
+model TransportLine {
+  id            String            @id @default(cuid())
+  contractId    String
+  contract      TransportContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  sortOrder     Int
+  name          String
+  routeText     String            @default("")
+  unit          String            @default("chuyến")
+  quantityMilli Int               @default(0)
+  unitPrice     Int               @default(0)
+  amount        Int               @default(0)
+  note          String            @default("")
+
+  @@index([contractId])
+}
+
+model TransportAdvance {
+  id         String            @id @default(cuid())
+  contractId String
+  contract   TransportContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  occurredOn String
+  amount     Int
+  payerId    String            @default("")
+  note       String            @default("")
+  createdAt  DateTime          @default(now())
+
+  @@index([contractId])
 }
 
 // Chi phí chung của một công trình. rateBps là phần vạn: 2,5% lưu 250.

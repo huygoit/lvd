@@ -1,6 +1,6 @@
 // Bốn số trên tab Tổng quan của một công trình.
 // Giá trị lấy từ hạng mục đã ghi. Chưa phải giá hợp đồng đã ký, giá báo giá hay giá quản trị.
-// Thuế thu nhập doanh nghiệp = (doanh thu sau thuế − đơn hàng đã lưu − chi phí công trình) × % hồ sơ công ty.
+// Thuế thu nhập doanh nghiệp = (doanh thu sau thuế − đơn hàng − chi phí công trình − gia công − vận chuyển) × % hồ sơ công ty.
 // Không lấy chi phí chung vào phần cơ sở. Lợi nhuận chưa trừ khoản này. Lợi nhuận ròng mới trừ.
 
 export const GHI_CHU_GIA_TRI = "Giá trị lấy từ hạng mục, chưa phải giá hợp đồng đã ký.";
@@ -23,6 +23,8 @@ export type SoTongQuan = {
   chiPhiChung: number | null;
   tienDonHang: number;
   tienCongTrinh: number;
+  tienGiaCong: number;
+  tienVanChuyen: number;
   thueTndnBps: number | null;
   thueTndn: number | null;
   thieuThueTndn: string | null;
@@ -46,8 +48,12 @@ export function tinhSoTongQuan(input: {
   tyLeChungBps: number[];
   tienDonHang: number;
   tienCongTrinh: number;
+  tienGiaCong?: number;
+  tienVanChuyen?: number;
   thueTndnBps?: number | null;
 }): SoTongQuan {
+  const tienGiaCong = input.tienGiaCong ?? 0;
+  const tienVanChuyen = input.tienVanChuyen ?? 0;
   const soHangMuc = input.thanhTien.length;
   const truocThue = soHangMuc === 0 ? null : input.thanhTien.reduce((tong, tien) => tong + tien, 0);
 
@@ -73,7 +79,7 @@ export function tinhSoTongQuan(input: {
     chiPhiChung = input.tyLeChungBps.reduce((tong, bps) => tong + Math.round(((sauThue ?? 0) * bps) / 10000), 0);
   }
   const tyLeTndn = input.thueTndnBps ?? null;
-  const coSoTndn = sauThue === null ? null : sauThue - input.tienDonHang - input.tienCongTrinh;
+  const coSoTndn = sauThue === null ? null : sauThue - input.tienDonHang - input.tienCongTrinh - tienGiaCong - tienVanChuyen;
   let thueTndn: number | null = null;
   let thieuThueTndn: string | null = null;
   if (tyLeTndn === null) {
@@ -83,7 +89,7 @@ export function tinhSoTongQuan(input: {
   } else {
     thueTndn = Math.round((coSoTndn * tyLeTndn) / 10000);
   }
-  const tongChiPhi = chiPhiChung === null ? null : chiPhiChung + input.tienDonHang + input.tienCongTrinh;
+  const tongChiPhi = chiPhiChung === null ? null : chiPhiChung + input.tienDonHang + input.tienCongTrinh + tienGiaCong + tienVanChuyen;
 
   const duHaiVe = sauThue !== null && tongChiPhi !== null;
   const loiNhuan = duHaiVe && sauThue !== null && tongChiPhi !== null ? sauThue - tongChiPhi : null;
@@ -101,6 +107,8 @@ export function tinhSoTongQuan(input: {
     chiPhiChung,
     tienDonHang: input.tienDonHang,
     tienCongTrinh: input.tienCongTrinh,
+    tienGiaCong,
+    tienVanChuyen,
     thueTndnBps: tyLeTndn,
     thueTndn,
     thieuThueTndn,

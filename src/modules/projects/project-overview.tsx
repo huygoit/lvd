@@ -8,6 +8,8 @@ import { ProjectCosts, type ChiPhiActions } from "@/modules/projects/project-cos
 import { ProjectMaterials } from "@/modules/projects/project-materials";
 import { ProjectOrders } from "@/modules/projects/project-orders";
 import { ProjectDocuments } from "@/modules/projects/project-documents";
+import { ProjectFabrication } from "@/modules/projects/project-fabrication";
+import { ProjectTransport } from "@/modules/projects/project-transport";
 
 export function dateLabel(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -20,6 +22,8 @@ const tabs = [
   "Hạng mục",
   "Đơn hàng",
   "Vật tư công trình",
+  "Gia công",
+  "Vận chuyển",
   "Thành viên",
   "Hóa đơn",
   "Chi phí",
@@ -35,6 +39,10 @@ export function ProjectOverview({
   staff,
   canEdit,
   canSeeShared,
+  canSeeFabrication,
+  canEditFabrication,
+  canSeeTransport,
+  canEditTransport,
   canQuote,
   onEdit,
   onQuote,
@@ -62,6 +70,10 @@ export function ProjectOverview({
   staff: { id: string; name: string }[];
   canEdit: boolean;
   canSeeShared: boolean;
+  canSeeFabrication: boolean;
+  canEditFabrication: boolean;
+  canSeeTransport: boolean;
+  canEditTransport: boolean;
   canQuote: boolean;
   onEdit: () => void;
   onQuote: () => void;
@@ -119,6 +131,14 @@ export function ProjectOverview({
         <ProjectOrders projectId={project.id} canEdit={canEdit} />
       ) : tab === "Vật tư công trình" ? (
         <ProjectMaterials projectId={project.id} />
+      ) : tab === "Gia công" ? (
+        canSeeFabrication
+          ? <ProjectFabrication projectId={project.id} staff={staff} canEdit={canEditFabrication} defaultPayerId={project.ownerId} />
+          : <section className="rounded-xl border border-dashed border-line bg-soft px-4 py-16 text-center"><p className="text-sm text-muted">Bạn không có quyền xem hợp đồng gia công.</p></section>
+      ) : tab === "Vận chuyển" ? (
+        canSeeTransport
+          ? <ProjectTransport projectId={project.id} staff={staff} canEdit={canEditTransport} defaultPayerId={project.ownerId} />
+          : <section className="rounded-xl border border-dashed border-line bg-soft px-4 py-16 text-center"><p className="text-sm text-muted">Bạn không có quyền xem hợp đồng vận chuyển.</p></section>
       ) : tab === "Chi phí" ? (
         <ProjectCosts projectId={project.id} staff={staff} canEdit={canEdit} canSeeShared={canSeeShared} defaultPayerId={project.ownerId} addCostRef={addCostRef} />
       ) : tab === "Tài liệu" ? (
