@@ -82,3 +82,30 @@ export function thanhTienDong(areaMilli: number, unitPrice: number) {
   if (!areaMilli || !unitPrice) return 0;
   return Math.round((areaMilli * unitPrice) / 1000);
 }
+
+// VAT ×100 (0 / 500 / 800 / 1000). Thêm giá trị mới chỉ cần sửa whitelist này.
+export const fabricationVatBpsOptions = [0, 500, 800, 1000] as const;
+
+export function parseVat(value: unknown) {
+  if (value === undefined || value === null || String(value).trim() === "") return 0;
+  const raw = String(value).trim().replace(",", ".");
+  const so = Number(raw);
+  if (!Number.isFinite(so) || so < 0) throw new AppError("Thuế VAT không hợp lệ.", 400);
+  const bps = Math.round(so * 100);
+  if (!fabricationVatBpsOptions.includes(bps as (typeof fabricationVatBpsOptions)[number])) {
+    throw new AppError("VAT chỉ nhận 0, 5, 8 hoặc 10 phần trăm.", 400);
+  }
+  return bps;
+}
+
+// Khối lượng m² ×1000 do người dùng nhập đè. Trả null nếu không có.
+export function khoiLuongOverrideMilli(value: unknown) {
+  if (value === undefined || value === null) return null;
+  const raw = String(value).trim().replace(",", ".");
+  if (!raw) return null;
+  const so = Number(raw);
+  if (!Number.isFinite(so) || so < 0) throw new AppError("Khối lượng không hợp lệ.", 400);
+  const milli = Math.round(so * 1000);
+  if (milli > 1_000_000_000) throw new AppError("Khối lượng quá lớn.", 400);
+  return milli;
+}

@@ -1,5 +1,6 @@
 export const materialGroups = [
   "Nhôm",
+  "Kính",
   "Phụ kiện",
   "Keo – gioăng – vật tư phụ",
   "NVL",

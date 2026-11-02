@@ -51,25 +51,24 @@ describe("số tổng quan một công trình", () => {
     const so = tinhSoTongQuan({ vatPercent: 8, thanhTien: [], tyLeChungBps: [300], tienDonHang: 100, tienCongTrinh: 50 });
     assert.equal(so.chiPhiChung, null);
     assert.equal(so.tongChiPhi, null);
-    assert.equal(so.thieuChiPhi, "Chưa có doanh thu sau thuế để tính chi phí chung");
+    assert.equal(so.thieuChiPhi, "Chưa có doanh thu trước thuế để tính chi phí chung");
     assert.equal(so.loiNhuan, null);
   });
 
-  it("cộng chi phí chung trên doanh thu sau thuế, đơn hàng và chi phí công trình", () => {
+  it("cộng chi phí chung trên doanh thu trước thuế, đơn hàng và chi phí công trình", () => {
     const so = tinhSoTongQuan({ vatPercent: 8, thanhTien: [1_000_000], tyLeChungBps: [250, 100], tienDonHang: 200_000, tienCongTrinh: 50_000 });
     assert.equal(so.truocThue, 1_000_000);
     assert.equal(so.sauThue, 1_080_000);
-    assert.equal(so.chiPhiChung, 37_800);
+    assert.equal(so.chiPhiChung, 35_000);
     assert.equal(so.tienDonHang, 200_000);
     assert.equal(so.tienCongTrinh, 50_000);
-    assert.equal(so.tongChiPhi, 287_800);
-    assert.equal(so.loiNhuan, 792_200);
+    assert.equal(so.tongChiPhi, 285_000);
+    assert.equal(so.loiNhuan, 795_000);
   });
 
-  it("chưa có sau thuế thì không nhân tỷ lệ trên doanh thu trước thuế", () => {
+  it("có hạng mục là nhân tỷ lệ trên doanh thu trước thuế dù chưa chốt VAT", () => {
     const so = tinhSoTongQuan({ vatPercent: null, thanhTien: [1_000_000], tyLeChungBps: [200], tienDonHang: 0, tienCongTrinh: 0 });
-    assert.equal(so.chiPhiChung, null);
-    assert.equal(so.tongChiPhi, null);
+    assert.equal(so.chiPhiChung, 20_000);
   });
 
   it("chưa có hạng mục thì không coi giá trị sau thuế là 0", () => {
@@ -97,9 +96,9 @@ describe("số tổng quan một công trình", () => {
     });
     assert.equal(so.thueTndn, 166_000);
     assert.equal(so.thieuThueTndn, null);
-    assert.equal(so.tongChiPhi, 287_800);
-    assert.equal(so.loiNhuan, 792_200);
-    assert.equal(so.loiNhuanRong, 626_200);
+    assert.equal(so.tongChiPhi, 285_000);
+    assert.equal(so.loiNhuan, 795_000);
+    assert.equal(so.loiNhuanRong, 629_000);
     assert.equal(so.ghiChuRong, GHI_CHU_DA_TRU_THUE);
   });
 

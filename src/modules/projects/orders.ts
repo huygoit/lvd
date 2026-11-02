@@ -9,7 +9,7 @@ import { assertAny, assertOwn } from "@/modules/system/access";
 import { writeAudit } from "@/modules/system/audit";
 import { nextCode } from "@/modules/system/codes";
 import { phanBoGiao } from "@/modules/deliveries/service";
-import { cleanSupplierContact, readOrderPdf, type PdfLine } from "@/modules/projects/order-pdf";
+import { cleanSupplierContact, readOrderPdf, type PdfLine, type VatMode } from "@/modules/projects/order-pdf";
 import { docTep, ghiTep, khoaDonHang, noiLuuHienTai, xoaTep, type NoiLuu } from "@/modules/projects/document-store";
 
 const maxSize = 15 * 1024 * 1024;
@@ -26,6 +26,14 @@ type LineInput = {
   lengthM?: unknown;
   kgPerM?: unknown;
   totalKg?: unknown;
+  quantity?: unknown;
+  unitPrice?: unknown;
+  vatPercent?: unknown;
+  nguon?: unknown;
+};
+
+type SurchargeInput = {
+  name?: unknown;
   quantity?: unknown;
   unitPrice?: unknown;
   vatPercent?: unknown;
@@ -119,6 +127,7 @@ function fromPdf(kind: string, line: PdfLine, sortOrder: number) {
       quantityMilli: Math.round(line.quantity * 1000),
       unitPrice: line.unitPrice,
       taxBps: 0,
+      nguon: "pdf",
     };
   }
   const unit = kind === "nhom" ? "thanh" : canonMeasureUnit(line.unit.replace("m²", "m2")) ?? line.unit;
@@ -136,6 +145,7 @@ function fromPdf(kind: string, line: PdfLine, sortOrder: number) {
     quantityMilli: kind === "nhom" ? line.barCount * 1000 : Math.round(line.quantity * 1000),
     unitPrice: line.unitPrice,
     taxBps: Math.round(line.vatPercent * 100),
+    nguon: "pdf",
   };
 }
 
@@ -272,6 +282,7 @@ function supplierBank(bankName: string, accountNumber: string) {
   return { bankName: name.slice(0, 80), accountNumber: number };
 }
 
+// Trả về thành tiền trước thuế của một dòng đơn hàng.
 export function orderLineAmount(kind: string, line: { totalGrams: number; quantityMilli: number; unitPrice: number; lengthMm: number; barCount: number }) {
   if (!line.unitPrice) return 0;
   if (kind === "kinh") {
@@ -281,6 +292,46 @@ export function orderLineAmount(kind: string, line: { totalGrams: number; quanti
   }
   const base = kind === "nhom" ? line.totalGrams : line.quantityMilli;
   return Math.round(base * line.unitPrice / 1000);
+}
+
+// Có cột VAT từng dòng → net. Chỉ gom_vat mới tách ngược. chua_vat / khong_ro: không coi là đã gồm.
+export function donGomVat(vatMode: string, vatInline: boolean) {
+  if (vatInline) return false;
+  return vatMode === "gom_vat";
+}
+
+// Tổng thanh toán của dòng. Đơn giá gồm VAT thì số tính từ đơn giá đã là sau thuế, không cộng thêm.
+// khong_ro: giữ nguyên số trên đơn, chưa cộng/tách thuế — chờ người dùng xác nhận.
+export function orderLinePayable(
+  kind: string,
+  line: { totalGrams: number; quantityMilli: number; unitPrice: number; lengthMm: number; barCount: number; taxBps: number },
+  vatMode = "khong_ro",
+  vatInline = false,
+) {
+  const tien = orderLineAmount(kind, line);
+  if (vatMode === "khong_ro") return tien;
+  if (donGomVat(vatMode, vatInline)) return tien;
+  if (!tien || !line.taxBps) return tien;
+  return tien + Math.round((tien * line.taxBps) / 10000);
+}
+
+// Thành tiền phụ thu = SL × đơn giá (milli).
+export function orderSurchargeAmount(row: { quantityMilli: number; unitPrice: number }) {
+  if (!row.unitPrice || !row.quantityMilli) return 0;
+  return Math.round((row.quantityMilli * row.unitPrice) / 1000);
+}
+
+// Tổng thanh toán một dòng phụ thu — cùng quy tắc gom_vat / chưa VAT với dòng hàng.
+export function orderSurchargePayable(
+  row: { quantityMilli: number; unitPrice: number; taxBps: number },
+  vatMode = "khong_ro",
+  vatInline = false,
+) {
+  const tien = orderSurchargeAmount(row);
+  if (vatMode === "khong_ro") return tien;
+  if (donGomVat(vatMode, vatInline)) return tien;
+  if (!tien || !row.taxBps) return tien;
+  return tien + Math.round((tien * row.taxBps) / 10000);
 }
 
 function present(order: {
@@ -299,6 +350,12 @@ function present(order: {
   supplierRepresentativeName: string;
   supplierRepresentativeTitle: string;
   headerNote: string;
+  vatMode: string;
+  vatInline: boolean;
+  vatEvidence: string;
+  depositPercentBps?: number;
+  depositAmount?: number;
+  depositNote?: string;
   fileName: string;
   createdAt: Date;
   partner: { id: string; code: string; name: string } | null;
@@ -318,8 +375,20 @@ function present(order: {
     quantityMilli: number;
     unitPrice: number;
     taxBps: number;
+    nguon: string;
+  }[];
+  surcharges?: {
+    id: string;
+    sortOrder: number;
+    name: string;
+    quantityMilli: number;
+    unitPrice: number;
+    taxBps: number;
   }[];
 }, delivery = "", canShip = true, shipped = false) {
+  const phuThu = order.surcharges ?? [];
+  const tienDong = order.lines.reduce((sum, line) => sum + orderLinePayable(order.kind, line, order.vatMode, order.vatInline), 0);
+  const tienPhu = phuThu.reduce((sum, row) => sum + orderSurchargePayable(row, order.vatMode, order.vatInline), 0);
   return {
     id: order.id,
     code: order.code,
@@ -344,9 +413,15 @@ function present(order: {
     partnerId: order.partner?.id ?? "",
     supplierIsNew: !order.partner,
     headerNote: order.headerNote,
+    vatMode: order.vatMode,
+    vatInline: order.vatInline,
+    vatEvidence: order.vatEvidence,
+    depositPercent: (order.depositPercentBps ?? 0) / 100,
+    depositAmount: order.depositAmount ?? 0,
+    depositNote: order.depositNote ?? "",
     fileName: order.fileName,
     createdOn: ngay(order.createdAt),
-    amount: order.lines.reduce((sum, line) => sum + orderLineAmount(order.kind, line), 0),
+    amount: tienDong + tienPhu,
     lines: order.lines.map((line) => ({
       id: line.id,
       sortOrder: line.sortOrder,
@@ -365,12 +440,25 @@ function present(order: {
       quantity: line.quantityMilli / 1000,
       unitPrice: line.unitPrice,
       vatPercent: line.taxBps / 100,
-    isNew: !line.materialId,
+      nguon: line.nguon === "thu_cong" ? "thu_cong" : "pdf",
+      isNew: !line.materialId,
+    })),
+    surcharges: phuThu.map((row) => ({
+      id: row.id,
+      sortOrder: row.sortOrder,
+      name: row.name,
+      quantity: row.quantityMilli / 1000,
+      unitPrice: row.unitPrice,
+      vatPercent: row.taxBps / 100,
     })),
   };
 }
 
-const include = { partner: { select: { id: true, code: true, name: true } }, lines: { orderBy: { sortOrder: "asc" as const } } };
+const include = {
+  partner: { select: { id: true, code: true, name: true } },
+  lines: { orderBy: { sortOrder: "asc" as const } },
+  surcharges: { orderBy: { sortOrder: "asc" as const } },
+};
 
 async function conDuocGiao(rows: { id: string; kind: string; lines: { id: string; materialId: string | null; barCount: number; lengthMm: number; quantityMilli: number }[] }[]) {
   if (!rows.length) return new Map<string, { canShip: boolean; shipped: boolean }>();
@@ -428,6 +516,35 @@ export async function getProjectOrder(user: User, projectId: string, orderId: st
   return present(row, marks.get(row.id) ?? "", open.get(row.id)?.canShip ?? false, open.get(row.id)?.shipped ?? false);
 }
 
+// Tạo đơn trống để nhập tay — cùng form với đơn nạp từ file.
+export async function createManualProjectOrder(user: User, projectId: string, kindRaw: unknown) {
+  canEdit(user);
+  await visible(user, projectId);
+  const kind = text(kindRaw);
+  if (kind !== "nhom" && kind !== "kinh" && kind !== "bo_cai") {
+    throw new AppError("Chọn loại đơn: nhôm, kính hoặc bộ cái.", 400);
+  }
+  const created = await prisma.$transaction(async (tx) => {
+    const code = await nextCode(tx, "DH", new Date());
+    const order = await tx.projectOrder.create({
+      data: {
+        code,
+        projectId,
+        kind,
+        status: "cho_xem",
+        // Đơn tay: giá nhập chưa gồm VAT, VAT chọn ở footer / từng dòng phụ thu.
+        vatMode: "chua_vat",
+        vatInline: false,
+        vatEvidence: "tao_tay",
+      },
+      include,
+    });
+    await writeAudit(tx, user.id, "tao", "don_hang", order.id, `Tạo tay ${order.code}`);
+    return order;
+  });
+  return present(created);
+}
+
 export async function importProjectOrder(user: User, projectId: string, file: File, onStage: (stage: string) => void) {
   canEdit(user);
   await visible(user, projectId);
@@ -441,7 +558,14 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
   onStage("doi");
   const kept = parsed.lines.filter((line) => !junk(line));
   if (!kept.length) throw new AppError("Không bóc được dòng hàng nào trong tệp.", 400);
-  const shaped = await matchLines(parsed.kind, kept.map((line, index) => fromPdf(parsed.kind, line, index + 1)));
+  const vatInline = parsed.vatInline;
+  // Có cột VAT từng dòng → giá dòng là net, luôn chua_vat, không hỏi popup.
+  // Không cột: giữ vatMode từ PDF (khong_ro / gom / chua) để UI xác nhận.
+  const vatMode: VatMode = vatInline ? "chua_vat" : parsed.vatMode;
+  // Không có cột VAT từng dòng: gợi ý 8% (user có thể đổi khi xác nhận khong_ro).
+  const shaped = (await matchLines(parsed.kind, kept.map((line, index) => fromPdf(parsed.kind, line, index + 1)))).map((line) => (
+    !vatInline && !line.taxBps ? { ...line, taxBps: 800 } : line
+  ));
   const supplier = await matchSupplier(parsed.supplierName, parsed.supplierAddress, parsed.supplierPhone);
   await chanDonTrung(projectId, fileHash, parsed.kind, {
     partnerId: supplier?.id ?? "",
@@ -477,7 +601,25 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
         fileStore: noi,
         fileHash,
         headerNote: parsed.headerNote,
+        vatMode,
+        vatInline,
+        vatEvidence: parsed.vatEvidence,
+        depositPercentBps: Math.round(parsed.depositPercent * 100),
+        depositAmount: parsed.depositAmount,
+        depositNote: parsed.depositNote,
         lines: { create: shaped.map(({ isNew: _isNew, ...line }) => line) },
+        surcharges: parsed.surcharges.length
+          ? {
+              create: parsed.surcharges.map((row, index) => ({
+                sortOrder: index + 1,
+                name: row.name.slice(0, 300),
+                quantityMilli: Math.round((row.quantity > 0 ? row.quantity : 1) * 1000),
+                unitPrice: row.unitPrice,
+                // Không cột VAT dòng: gợi ý cùng mức 8% như dòng hàng; có % riêng thì giữ.
+                taxBps: !vatInline && !row.vatPercent ? 800 : Math.round(Math.max(0, row.vatPercent) * 100),
+              })),
+            }
+          : undefined,
       },
       include,
     });
@@ -491,7 +633,12 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
   return present(created);
 }
 
-function cleanLine(kind: string, input: LineInput, sortOrder: number) {
+function nguonDong(value: unknown, coTep: boolean) {
+  if (!coTep) return "thu_cong";
+  return text(value) === "thu_cong" ? "thu_cong" : "pdf";
+}
+
+function cleanLine(kind: string, input: LineInput, sortOrder: number, coTep: boolean) {
   const materialCode = text(input.materialCode);
   const name = text(input.name);
   if (!materialCode) throw new AppError(kind === "kinh" ? "Cần nhập ký hiệu." : "Cần nhập mã hàng.", 400);
@@ -514,6 +661,7 @@ function cleanLine(kind: string, input: LineInput, sortOrder: number) {
       quantityMilli: milli(input.quantity),
       unitPrice: money(input.unitPrice),
       taxBps: 0,
+      nguon: nguonDong(input.nguon, coTep),
     };
   }
   const unit = unitOf(kind, input.unit);
@@ -536,10 +684,43 @@ function cleanLine(kind: string, input: LineInput, sortOrder: number) {
     quantityMilli: kind === "nhom" ? barCount * 1000 : milli(input.quantity),
     unitPrice: money(input.unitPrice),
     taxBps: Math.round(Math.max(0, Number(text(input.vatPercent).replace(",", ".")) || 0) * 100),
+    nguon: nguonDong(input.nguon, coTep),
   };
 }
 
-export async function saveProjectOrder(user: User, projectId: string, orderId: string, input: { supplierName?: unknown; supplierAddress?: unknown; supplierPhone?: unknown; supplierBankName?: unknown; supplierAccountNumber?: unknown; supplierWebsite?: unknown; supplierEmail?: unknown; supplierTaxCode?: unknown; supplierRepresentativeName?: unknown; supplierRepresentativeTitle?: unknown; headerNote?: unknown; lines?: unknown }) {
+function cleanSurcharge(input: SurchargeInput, sortOrder: number) {
+  const name = text(input.name);
+  if (!name) throw new AppError("Phụ thu cần diễn giải.", 400);
+  const quantityMilli = milli(input.quantity);
+  if (quantityMilli <= 0) throw new AppError(`Phụ thu «${name}» cần số lượng.`, 400);
+  return {
+    sortOrder,
+    name: name.slice(0, 300),
+    quantityMilli,
+    unitPrice: money(input.unitPrice),
+    taxBps: Math.round(Math.max(0, Number(text(input.vatPercent).replace(",", ".")) || 0) * 100),
+  };
+}
+
+function cleanDeposit(input: { depositPercent?: unknown; depositAmount?: unknown; depositNote?: unknown }, fallback: { depositPercentBps: number; depositAmount: number; depositNote: string }) {
+  const percentRaw = input.depositPercent === undefined || input.depositPercent === null
+    ? fallback.depositPercentBps / 100
+    : Number(text(input.depositPercent).replace(",", ".")) || 0;
+  if (percentRaw < 0 || percentRaw > 100) throw new AppError("Tỉ lệ đặt cọc không hợp lệ.", 400);
+  const amount = input.depositAmount === undefined || input.depositAmount === null
+    ? fallback.depositAmount
+    : money(input.depositAmount);
+  const note = input.depositNote === undefined || input.depositNote === null
+    ? fallback.depositNote
+    : text(input.depositNote).slice(0, 300);
+  return {
+    depositPercentBps: Math.round(percentRaw * 100),
+    depositAmount: amount,
+    depositNote: note,
+  };
+}
+
+export async function saveProjectOrder(user: User, projectId: string, orderId: string, input: { supplierName?: unknown; supplierAddress?: unknown; supplierPhone?: unknown; supplierBankName?: unknown; supplierAccountNumber?: unknown; supplierWebsite?: unknown; supplierEmail?: unknown; supplierTaxCode?: unknown; supplierRepresentativeName?: unknown; supplierRepresentativeTitle?: unknown; headerNote?: unknown; lines?: unknown; surcharges?: unknown; depositPercent?: unknown; depositAmount?: unknown; depositNote?: unknown }) {
   canEdit(user);
   await visible(user, projectId);
   const current = await prisma.projectOrder.findFirst({ where: { id: orderId, projectId } });
@@ -564,11 +745,25 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
   if (rawTaxCode.trim() && !contact.supplierTaxCode) throw new AppError("Mã số thuế không đúng.", 400);
   const headerNote = given(input.headerNote, current.headerNote);
   if (!supplierName) throw new AppError("Đơn hàng không hợp lệ. Thiếu tên nhà cung cấp.", 400);
+  // Đơn nạp PDF chưa qua popup xác nhận VAT thì chưa cho lưu.
+  // Có cột VAT từng dòng (vatInline) thì đã chốt chua_vat, không cần hỏi.
+  const daXacNhanVat = current.vatEvidence === "nguoi_dung_xac_nhan" || current.vatEvidence === "tao_tay";
+  if (!daXacNhanVat && !current.vatInline) {
+    throw new AppError("Cần xác nhận mức VAT của đơn trước khi lưu.", 400);
+  }
+  const deposit = cleanDeposit(input, {
+    depositPercentBps: current.depositPercentBps,
+    depositAmount: current.depositAmount,
+    depositNote: current.depositNote,
+  });
   const digits = phoneDigits(supplierPhone);
   if (digits && (digits.length < 9 || digits.length > 12)) throw new AppError("Đơn hàng không hợp lệ. Số điện thoại nhà cung cấp không đúng.", 400);
   const rawLines = Array.isArray(input.lines) ? input.lines : [];
   if (!rawLines.length) throw new AppError("Đơn chưa có dòng hàng.", 400);
-  const lines = rawLines.map((line, index) => cleanLine(current.kind, line as LineInput, index + 1));
+  const lines = rawLines.map((line, index) => cleanLine(current.kind, line as LineInput, index + 1, Boolean(current.fileName)));
+  // Phụ thu tùy chọn: mảng rỗng = xóa hết phụ thu trên đơn.
+  const rawSurcharges = Array.isArray(input.surcharges) ? input.surcharges : [];
+  const surcharges = rawSurcharges.map((row, index) => cleanSurcharge(row as SurchargeInput, index + 1));
   const needsMaterial = lines.some((line) => line.materialCode);
   if (needsMaterial) assertAny(user, ["inventory.create", "inventory.update"]);
   const known = await matchSupplier(supplierName, supplierAddress, supplierPhone);
@@ -624,6 +819,7 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
       await writeAudit(tx, user.id, "tao", "doi_tac", partner.id, `Thêm nhà cung cấp ${partner.code} từ đơn hàng`);
     }
     await tx.projectOrderLine.deleteMany({ where: { orderId } });
+    await tx.projectOrderSurcharge.deleteMany({ where: { orderId } });
     const materialIds = new Map<string, string>();
     for (const line of lines) {
       const key = current.kind === "kinh" ? foldVi(line.name) : line.materialCode.toLocaleLowerCase("vi");
@@ -637,7 +833,7 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
         const taken = await tx.material.findUnique({ where: { code: glassCode(line.name) }, select: { id: true } });
         const code = taken ? `${glassCode(line.name)}-${line.sortOrder}` : glassCode(line.name);
         const created = await tx.material.create({
-          data: { code, name: line.name, spec: line.spec, stockUnit: "m2", priceBasis: "sl", nature: "vat_tu", groupName: "", supplierCode: partnerCode },
+          data: { code, name: line.name, spec: line.spec, stockUnit: "m2", priceBasis: "sl", nature: "vat_tu", groupName: "Kính", supplierCode: partnerCode },
         });
         materialIds.set(key, created.id);
         await writeAudit(tx, user.id, "tao", "vat_tu", created.id, `Thêm vật tư ${created.code} từ đơn kính`);
@@ -653,7 +849,7 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
         data: {
           code: line.materialCode,
           name: line.name,
-          groupName: current.kind === "nhom" ? "Nhôm" : "",
+          groupName: current.kind === "nhom" ? "Nhôm" : "Phụ kiện",
           supplierCode: partnerCode,
           spec: line.spec,
           stockUnit: line.unit,
@@ -673,6 +869,11 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
         materialId: materialIds.get(current.kind === "kinh" ? foldVi(line.name) : line.materialCode.toLocaleLowerCase("vi")) ?? null,
       })),
     });
+    if (surcharges.length) {
+      await tx.projectOrderSurcharge.createMany({
+        data: surcharges.map((row) => ({ ...row, orderId })),
+      });
+    }
     const order = await tx.projectOrder.update({
       where: { id: orderId },
       data: {
@@ -688,11 +889,80 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
         supplierRepresentativeName: contact.supplierRepresentativeName,
         supplierRepresentativeTitle: contact.supplierRepresentativeTitle,
         headerNote,
+        depositPercentBps: deposit.depositPercentBps,
+        depositAmount: deposit.depositAmount,
+        depositNote: deposit.depositNote,
         status: "da_luu",
       },
       include,
     });
     await writeAudit(tx, user.id, "sua", "don_hang", order.id, `Lưu ${order.code}`);
+    return order;
+  });
+  return present(saved);
+}
+
+// Xác nhận VAT sau nạp PDF.
+// - khong_ro: chọn đã gồm / chưa gồm + mức %.
+// - gom_vat / chua_vat: giữ mode, chỉ chốt mức % cả đơn.
+export async function confirmProjectOrderVat(
+  user: User,
+  projectId: string,
+  orderId: string,
+  input: { gomVat?: unknown; vatPercent?: unknown },
+) {
+  canEdit(user);
+  await visible(user, projectId);
+  const current = await prisma.projectOrder.findFirst({
+    where: { id: orderId, projectId },
+    select: { id: true, code: true, vatMode: true, vatInline: true, vatEvidence: true },
+  });
+  if (!current) throw new AppError("Không tìm thấy đơn hàng.", 404);
+  if (current.vatEvidence === "nguoi_dung_xac_nhan" || current.vatEvidence === "tao_tay") {
+    throw new AppError("Đơn này đã xác nhận VAT.", 400);
+  }
+  if (current.vatInline) {
+    throw new AppError("Đơn có VAT từng dòng (chưa gồm VAT), không cần xác nhận thêm.", 400);
+  }
+
+  const vatPercent = Math.round(Math.max(0, Number(text(input.vatPercent).replace(",", ".")) || 0));
+  if (![0, 5, 8, 10].includes(vatPercent)) throw new AppError("Chọn mức VAT 0%, 5%, 8% hoặc 10%.", 400);
+  const taxBps = vatPercent * 100;
+
+  let vatMode: VatMode;
+  if (current.vatMode === "khong_ro") {
+    const gom = input.gomVat === true || text(input.gomVat) === "true" || text(input.gomVat) === "gom_vat";
+    const chua = input.gomVat === false || text(input.gomVat) === "false" || text(input.gomVat) === "chua_vat";
+    if (!gom && !chua) throw new AppError("Chọn đơn đã gồm VAT hoặc chưa gồm VAT.", 400);
+    vatMode = gom ? "gom_vat" : "chua_vat";
+  } else if (current.vatMode === "gom_vat" || current.vatMode === "chua_vat") {
+    vatMode = current.vatMode;
+  } else {
+    throw new AppError("Trạng thái VAT của đơn không hợp lệ.", 400);
+  }
+
+  const saved = await prisma.$transaction(async (tx) => {
+    // Không có cột VAT từng dòng: áp cùng mức cho mọi dòng + phụ thu.
+    if (!current.vatInline) {
+      await tx.projectOrderLine.updateMany({ where: { orderId }, data: { taxBps } });
+      await tx.projectOrderSurcharge.updateMany({ where: { orderId }, data: { taxBps } });
+    }
+    const order = await tx.projectOrder.update({
+      where: { id: orderId },
+      data: {
+        vatMode,
+        vatEvidence: "nguoi_dung_xac_nhan",
+      },
+      include,
+    });
+    await writeAudit(
+      tx,
+      user.id,
+      "sua",
+      "don_hang",
+      order.id,
+      `Xác nhận VAT ${order.code}: ${vatMode === "gom_vat" ? "đã gồm" : "chưa gồm"} ${vatPercent}%`,
+    );
     return order;
   });
   return present(saved);

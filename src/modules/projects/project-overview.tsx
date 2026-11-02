@@ -20,7 +20,7 @@ export function dateLabel(value: string) {
 const tabs = [
   "Tổng quan",
   "Hạng mục",
-  "Đơn hàng",
+  "Đơn đặt hàng",
   "Vật tư công trình",
   "Gia công",
   "Vận chuyển",
@@ -127,7 +127,7 @@ export function ProjectOverview({
         />
       ) : tab === "Hạng mục" ? (
         <ProjectItems projectId={project.id} defaultOwnerId={project.ownerId} staff={staff} canEdit={canEdit} addLineRef={addLineRef} vatPercent={project.vatPercent} onSauThue={onSauThue} />
-      ) : tab === "Đơn hàng" ? (
+      ) : tab === "Đơn đặt hàng" ? (
         <ProjectOrders projectId={project.id} canEdit={canEdit} />
       ) : tab === "Vật tư công trình" ? (
         <ProjectMaterials projectId={project.id} />

@@ -8,10 +8,12 @@ import { nextCode } from "@/modules/system/codes";
 import {
   chuoi,
   dienTichMilli,
+  khoiLuongOverrideMilli,
   ngayBatBuoc,
   ngayTuyChon,
   parseStatus,
   parseSupply,
+  parseVat,
   soLuongMilli,
   soNguyenKhongAm,
   soTien,
@@ -67,6 +69,7 @@ function present(row: {
   status: string;
   signedOn: string;
   ratePerM2: number | null;
+  taxBps: number;
   note: string;
   revision: number;
   partner: { id: string; code: string; name: string };
@@ -79,13 +82,16 @@ function present(row: {
     heightMm: number;
     quantityMilli: number;
     areaMilli: number;
+    areaOverrideMilli: number | null;
     unitPrice: number;
     amount: number;
     note: string;
   }[];
   advances: { id: string; occurredOn: string; amount: number; payerId: string; note: string; createdAt: Date }[];
 }) {
-  const tongHopDong = row.lines.reduce((tong, dong) => tong + dong.amount, 0);
+  const truocThue = row.lines.reduce((tong, dong) => tong + dong.amount, 0);
+  const tienThue = Math.round((truocThue * row.taxBps) / 10000);
+  const tongHopDong = truocThue + tienThue;
   const tongTamUng = row.advances.reduce((tong, dong) => tong + dong.amount, 0);
   return {
     id: row.id,
@@ -99,8 +105,11 @@ function present(row: {
     status: row.status,
     signedOn: row.signedOn,
     ratePerM2: row.ratePerM2,
+    taxBps: row.taxBps,
     note: row.note,
     revision: row.revision,
+    truocThue,
+    tienThue,
     tongHopDong,
     tongTamUng,
     conLai: tongHopDong - tongTamUng,
@@ -113,6 +122,7 @@ function present(row: {
       heightMm: dong.heightMm,
       quantity: dong.quantityMilli / 1000,
       areaM2: dong.areaMilli / 1000,
+      areaOverrideM2: dong.areaOverrideMilli === null ? null : dong.areaOverrideMilli / 1000,
       unitPrice: dong.unitPrice,
       amount: dong.amount,
       note: dong.note,
@@ -133,6 +143,7 @@ type LineInput = {
   widthMm?: unknown;
   heightMm?: unknown;
   quantity?: unknown;
+  areaOverride?: unknown;
   unitPrice?: unknown;
   note?: unknown;
 };
@@ -150,7 +161,8 @@ function cleanLines(raw: unknown, ratePerM2: number | null) {
     const unitPrice = dong.unitPrice === undefined || dong.unitPrice === null || String(dong.unitPrice).trim() === ""
       ? ratePerM2 ?? 0
       : soNguyenKhongAm(dong.unitPrice, "Đơn giá");
-    const areaMilli = dienTichMilli(widthMm, heightMm, quantityMilli);
+    const areaOverrideMilli = khoiLuongOverrideMilli(dong.areaOverride);
+    const areaMilli = areaOverrideMilli ?? dienTichMilli(widthMm, heightMm, quantityMilli);
     return {
       sortOrder: index + 1,
       name,
@@ -159,6 +171,7 @@ function cleanLines(raw: unknown, ratePerM2: number | null) {
       heightMm,
       quantityMilli,
       areaMilli,
+      areaOverrideMilli,
       unitPrice,
       amount: thanhTienDong(areaMilli, unitPrice),
       note: chuoi(dong.note, 300),
@@ -201,6 +214,7 @@ export async function createFabricationContract(
     supplyKind?: unknown;
     signedOn?: unknown;
     ratePerM2?: unknown;
+    taxBps?: unknown;
     note?: unknown;
     lines?: unknown;
     status?: unknown;
@@ -215,6 +229,7 @@ export async function createFabricationContract(
   const ratePerM2 = input.ratePerM2 === undefined || String(input.ratePerM2 ?? "").trim() === ""
     ? null
     : soNguyenKhongAm(input.ratePerM2, "Đơn giá m²");
+  const taxBps = parseVat(input.taxBps);
   const lines = cleanLines(input.lines ?? [], ratePerM2);
   const status = input.status === undefined ? (lines.length ? "da_luu" : "nhap") : parseStatus(input.status);
   if (status !== "nhap" && status !== "da_luu") throw new AppError("Trạng thái tạo mới chỉ nhận nháp hoặc đã lưu.", 400);
@@ -230,6 +245,7 @@ export async function createFabricationContract(
         status,
         signedOn: ngayTuyChon(input.signedOn),
         ratePerM2,
+        taxBps,
         note: chuoi(input.note, 1000),
         lines: { create: lines },
       },
@@ -250,6 +266,7 @@ export async function updateFabricationContract(
     supplyKind?: unknown;
     signedOn?: unknown;
     ratePerM2?: unknown;
+    taxBps?: unknown;
     note?: unknown;
     lines?: unknown;
     status?: unknown;
@@ -269,6 +286,7 @@ export async function updateFabricationContract(
     : String(input.ratePerM2 ?? "").trim() === ""
       ? null
       : soNguyenKhongAm(input.ratePerM2, "Đơn giá m²");
+  const taxBps = input.taxBps === undefined ? current.taxBps : parseVat(input.taxBps);
   const lines = input.lines === undefined ? null : cleanLines(input.lines, ratePerM2);
   const status: FabricationStatus = input.status === undefined ? (current.status as FabricationStatus) : parseStatus(input.status);
   return prisma.$transaction(async (tx) => {
@@ -281,6 +299,7 @@ export async function updateFabricationContract(
         supplyKind: input.supplyKind === undefined ? current.supplyKind : parseSupply(input.supplyKind),
         signedOn: input.signedOn === undefined ? current.signedOn : ngayTuyChon(input.signedOn),
         ratePerM2,
+        taxBps,
         note: input.note === undefined ? current.note : chuoi(input.note, 1000),
         status,
         revision: { increment: 1 },
@@ -358,11 +377,15 @@ export async function deleteFabricationAdvance(user: User, projectId: string, co
   return present(full);
 }
 
-// Tổng thành tiền hợp đồng đã lưu hoặc kết thúc, dùng cho tổng quan công trình.
+// Tổng thanh toán (đã gồm VAT) của các hợp đồng đã lưu hoặc kết thúc, dùng cho tổng quan công trình.
 export async function tongChiPhiGiaCong(projectId: string) {
   const rows = await prisma.fabricationContract.findMany({
     where: { projectId, status: { in: ["da_luu", "ket_thuc"] } },
-    select: { lines: { select: { amount: true } } },
+    select: { taxBps: true, lines: { select: { amount: true } } },
   });
-  return rows.reduce((tong, hop) => tong + hop.lines.reduce((dong, line) => dong + line.amount, 0), 0);
+  return rows.reduce((tong, hop) => {
+    const truocThue = hop.lines.reduce((dong, line) => dong + line.amount, 0);
+    const tienThue = Math.round((truocThue * hop.taxBps) / 10000);
+    return tong + truocThue + tienThue;
+  }, 0);
 }

@@ -17,6 +17,16 @@ export type PdfLine = {
   heightMm: number;
 };
 
+export type VatMode = "gom_vat" | "chua_vat" | "khong_ro";
+
+// Khoản phí cộng thêm ngoài dòng hàng (không nhập kho).
+export type PdfSurcharge = {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  vatPercent: number;
+};
+
 export type PdfOrder = {
   kind: "nhom" | "bo_cai" | "kinh";
   supplierName: string;
@@ -31,14 +41,26 @@ export type PdfOrder = {
   supplierRepresentativeName: string;
   supplierRepresentativeTitle: string;
   headerNote: string;
+  // Trạng thái VAT theo ghi chú trên đơn.
+  vatMode: VatMode;
+  // Bảng PDF có cột VAT từng dòng hay không. Có thì tin dữ liệu dòng, không ép cả đơn.
+  vatInline: boolean;
+  // Câu/chỗ dùng để nhận diện vatMode. Hiển thị tooltip khi cần.
+  vatEvidence: string;
+  // Phụ thu / phí cộng thêm bóc ngoài bảng hàng.
+  surcharges: PdfSurcharge[];
+  // Đặt cọc / tạm ứng: tỉ lệ % (50 = 50%), số tiền tuyệt đối, câu gốc.
+  depositPercent: number;
+  depositAmount: number;
+  depositNote: string;
   lines: PdfLine[];
 };
 
 const prompt = `Đọc đơn đặt hàng hoặc hợp đồng mua bán trong PDF. Trả về một JSON, không markdown.
 Có ba kiểu:
-- nhom: bảng thanh nhôm. Cột mã hàng, diễn giải, mã màu, số thanh, độ dài mét, tỉ trọng kg/m, tổng kg, đơn giá theo kg. Bỏ dòng tiêu đề nhóm, dòng cộng tiền, phụ thu, đặt cọc, tổng cộng.
-- bo_cai: bảng phụ kiện tính theo bộ hoặc chiếc. Cột mã, tên, mô tả, đơn vị, số lượng, đơn giá, VAT từng dòng nếu có. Bỏ điều khoản hợp đồng và dòng tổng.
-- kinh: bảng thống kê kính. Mỗi dòng là một ký hiệu cửa. Cột ký hiệu, rộng mm, cao mm, số lượng tấm, đơn giá. Đơn giá là giá một mét vuông, ghi unitPrice, không phải giá một tấm. Nếu tách số tấm theo nhà thì ghi houseNote, ví dụ "CV 4 · HB 18". Ghi chú là kính trong hoặc kính mờ. Độ dày lấy ở tiêu đề. Đợt đặt và hạng mục ghi headerNote. code là ký hiệu cửa. name là "Kính {độ dày} {trong hoặc mờ}", ví dụ "Kính 6,38mm trong". Bỏ dòng tổng cộng.
+- nhom: bảng thanh nhôm. Cột mã hàng, diễn giải, mã màu, số thanh, độ dài mét, tỉ trọng kg/m, tổng kg, đơn giá theo kg. Bỏ dòng tiêu đề nhóm, dòng cộng tiền, tổng cộng. Khoản phí cộng thêm và phần đặt cọc/tạm ứng không đưa vào lines — tách sang surcharges và các trường deposit.
+- bo_cai: bảng phụ kiện tính theo bộ hoặc chiếc. Cột mã, tên, mô tả, đơn vị, số lượng, đơn giá, VAT từng dòng nếu có. Bỏ điều khoản hợp đồng và dòng tổng. Phí cộng thêm / đặt cọc xử lý như trên.
+- kinh: bảng thống kê kính. Mỗi dòng là một ký hiệu cửa. Cột ký hiệu, rộng mm, cao mm, số lượng tấm, đơn giá. Đơn giá là giá một mét vuông, ghi unitPrice, không phải giá một tấm. Nếu tách số tấm theo nhà thì ghi houseNote, ví dụ "CV 4 · HB 18". Ghi chú là kính trong hoặc kính mờ. Độ dày lấy ở tiêu đề. Đợt đặt và hạng mục ghi headerNote. code là ký hiệu cửa. name là "Kính {độ dày} {trong hoặc mờ}", ví dụ "Kính 6,38mm trong". Bỏ dòng tổng cộng. Phí cộng thêm / đặt cọc xử lý như trên.
 Nhà cung cấp là bên bán. Không lấy khối Khách hàng hay Bên mua.
 Tên, địa chỉ, điện thoại, website, email, mã số thuế của bên bán thường nằm trên đầu thư, kể cả khi đầu thư là hình logo.
 supplierPhone là hotline bên bán. Có hai số thì lấy số đầu. Không lấy số người liên hệ của khách hàng. Không thấy số thì để chuỗi rỗng.
@@ -47,9 +69,27 @@ supplierWebsite là website bên bán. supplierEmail là email bên bán.
 supplierTaxCode là mã số thuế bên bán. Không thấy thì để chuỗi rỗng. Không lấy số tài khoản ngân hàng.
 supplierRepresentativeName là tên người ở khối chữ ký của bên bán, tức khối không ghi Bên mua và không phải Khách hàng. Nếu khối đó chỉ có tên công ty, không có tên người, để chuỗi rỗng.
 supplierRepresentativeTitle là chức vụ ghi cạnh tên người đó. Không có tên người thì để chuỗi rỗng.
-Không thấy thì để chuỗi rỗng, không bịa.
+vatMode và vatInline là hai trường độc lập. Không suy vatMode chỉ vì bảng có hoặc không có cột VAT.
+vatInline = true khi bảng hàng có cột VAT/thuế GTGT từng dòng. Khi đó vatPercent từng dòng lấy đúng số trên cột đó. Không có cột thì false, vatPercent dòng để 0.
+Khi vatInline = true thì vatMode luôn là chua_vat (giá/thành tiền trên cột là trước thuế, thuế nằm cột riêng) — không chọn gom_vat hay khong_ro.
+Khi vatInline = false, vatMode theo câu ghi chú trên đơn (đầu trang, cuối bảng, chú thích dưới tổng tiền), theo ý nghĩa chứ không chỉ khớp cụm từ.
+VAT và GTGT (thuế giá trị gia tăng) là cùng một loại thuế. Câu dùng VAT hoặc GTGT đều nhận diện như nhau.
+- gom_vat: giá/thành tiền đã gồm thuế. Ví dụ "bao gồm VAT", "đã bao gồm GTGT", "giá đã có thuế GTGT", "đã bao gồm thuế", "giá đã gồm GTGT" và câu cùng nghĩa. unitPrice vẫn ghi nguyên số trên bảng, không tự trừ thuế.
+- chua_vat: giá/thành tiền chưa gồm thuế. Ví dụ "chưa bao gồm VAT", "chưa bao gồm GTGT", "chưa có VAT", "chưa có GTGT", "không bao gồm VAT", "không bao gồm GTGT", "không có VAT", "không có GTGT", "VAT tính riêng", "GTGT tính riêng", "cộng VAT", "cộng GTGT" và câu cùng nghĩa.
+- khong_ro: không thấy dấu hiệu rõ. Không đoán.
+vatEvidence là đúng một câu ngắn trích từ đơn dùng để chọn vatMode. Không thấy thì chuỗi rỗng.
+
+surcharges là mảng các khoản phí cộng thêm ngoài danh mục hàng hóa chính — nhận theo ngữ nghĩa, không phụ thuộc một cụm chữ cố định. Đó là khoản tính thêm trên đơn: phí khi số lượng/thanh dưới ngưỡng, phí gia công phụ, cước phát sinh, khoản phụ ngoài đơn giá hàng. Mỗi phần tử có name (diễn giải đủ nghĩa như trên đơn), quantity (không rõ thì 1), unitPrice (số tiền đơn vị nếu có; chỉ có diễn giải không có giá thì 0), vatPercent (nếu kèm thuế riêng; không thì 0). Không đưa dòng tổng cộng, thành tiền cuối bảng, hay dòng hàng hóa chính vào surcharges. Không thấy khoản nào thì mảng rỗng.
+
+depositPercent, depositAmount, depositNote mô tả phần khách phải ứng trước / đặt trước khi giao hoặc giữ giá — nhận theo ngữ nghĩa điều khoản thanh toán, không phụ thuộc một cụm chữ cố định.
+- depositPercent: tỉ lệ phần trăm nếu đơn nêu theo tỷ lệ (ví dụ nêu ứng trước một nửa giá trị thì 50). Không thấy tỉ lệ thì 0.
+- depositAmount: số tiền tuyệt đối nếu đơn nêu bằng đồng. Đơn giá là số nguyên đồng, bỏ dấu chấm ngăn nghìn. Không thấy số tiền thì 0.
+- depositNote: đúng một câu ngắn trích từ đơn nói về khoản ứng trước đó. Không thấy thì chuỗi rỗng.
+Có thể vừa có tỉ lệ vừa có số tiền. Không nhầm lịch thanh toán nhiều đợt (ví dụ sau nghiệm thu) với khoản phải đặt trước nếu câu không nói rõ phải ứng ngay / đặt trước. Không bịa.
+
+Không thấy thì để chuỗi rỗng hoặc 0, không bịa.
 JSON:
-{"kind":"kinh","supplierName":"","supplierCode":"","supplierAddress":"","supplierPhone":"","supplierBankName":"","supplierAccountNumber":"","supplierWebsite":"","supplierEmail":"","supplierTaxCode":"","supplierRepresentativeName":"","supplierRepresentativeTitle":"","headerNote":"","lines":[{"code":"","name":"","spec":"","unit":"tấm","colorCode":"","barCount":0,"lengthM":0,"kgPerM":0,"totalKg":0,"quantity":0,"unitPrice":0,"vatPercent":0,"widthMm":0,"heightMm":0}]}
+{"kind":"kinh","supplierName":"","supplierCode":"","supplierAddress":"","supplierPhone":"","supplierBankName":"","supplierAccountNumber":"","supplierWebsite":"","supplierEmail":"","supplierTaxCode":"","supplierRepresentativeName":"","supplierRepresentativeTitle":"","headerNote":"","vatMode":"khong_ro","vatInline":false,"vatEvidence":"","surcharges":[{"name":"","quantity":1,"unitPrice":0,"vatPercent":0}],"depositPercent":0,"depositAmount":0,"depositNote":"","lines":[{"code":"","name":"","spec":"","unit":"tấm","colorCode":"","barCount":0,"lengthM":0,"kgPerM":0,"totalKg":0,"quantity":0,"unitPrice":0,"vatPercent":0,"widthMm":0,"heightMm":0}]}
 Với kính, widthMm và heightMm là số nguyên milimét, 1.250 nghĩa là 1250. quantity là tổng số tấm. colorCode nhận houseNote. spec nhận ghi chú trong hoặc mờ.
 Số để dạng số. Đơn giá là số nguyên đồng, bỏ dấu chấm ngăn nghìn. kind chỉ được là nhom, bo_cai hoặc kinh.`;
 
@@ -190,6 +230,14 @@ function parseOrder(raw: string): PdfOrder {
   const supplierPhone = firstPhone(textOf(data.supplierPhone));
   const missing = [supplierName ? "" : "tên nhà cung cấp"].filter(Boolean);
   if (missing.length) throw new AppError(`Đơn hàng không hợp lệ. Thiếu ${missing.join(", ")}.`, 400);
+  const headerNote = textOf(data.headerNote).slice(0, 300);
+  const surcharges = (Array.isArray(data.surcharges) ? data.surcharges : [])
+    .map(surchargeOf)
+    .filter((row): row is PdfSurcharge => row !== null)
+    .slice(0, 50);
+  const depositPercent = percentOf(data.depositPercent);
+  const depositAmount = money(data.depositAmount);
+  const depositNote = textOf(data.depositNote).slice(0, 300);
   return {
     kind,
     supplierName,
@@ -205,9 +253,80 @@ function parseOrder(raw: string): PdfOrder {
       representativeName: data.supplierRepresentativeName,
       representativeTitle: data.supplierRepresentativeTitle,
     }),
-    headerNote: textOf(data.headerNote).slice(0, 300),
+    headerNote,
+    ...(() => {
+      const vatInline = nhanVatInline(data.vatInline, lines);
+      // Cột VAT từng dòng → giá là net, luôn chua_vat — không hỏi popup.
+      return {
+        vatInline,
+        vatMode: (vatInline ? "chua_vat" : nhanVatMode(data.vatMode, headerNote)) as VatMode,
+      };
+    })(),
+    vatEvidence: textOf(data.vatEvidence).slice(0, 300),
+    surcharges,
+    depositPercent,
+    depositAmount,
+    depositNote,
     lines,
   };
+}
+
+function percentOf(value: unknown) {
+  const amount = num(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  // Cho phép 0.5 nghĩa là 0.5%, hoặc 50 nghĩa là 50%. Chặn quá 100.
+  const pct = amount > 100 ? 100 : amount;
+  return Math.round(pct * 1000) / 1000;
+}
+
+function surchargeOf(raw: unknown): PdfSurcharge | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const name = textOf(row.name).slice(0, 300);
+  if (!name) return null;
+  // Lọc nhầm dòng tổng / cộng tiền nếu model vẫn nhét vào surcharges.
+  const chu = fold(name);
+  if (chu.includes("tong cong") || chu.includes("cong tien") || chu === "tong") return null;
+  const quantity = num(row.quantity);
+  return {
+    name,
+    quantity: quantity > 0 ? quantity : 1,
+    unitPrice: money(row.unitPrice),
+    vatPercent: Math.max(0, num(row.vatPercent)),
+  };
+}
+
+function coChu(chu: string, mau: string[]) {
+  return mau.some((item) => chu.includes(item));
+}
+
+// Ưu tiên vatMode Claude trả. Thiếu hoặc sai thì mới dò headerNote. Không rõ thì giữ khong_ro.
+function nhanVatMode(flag: unknown, headerNote: string): VatMode {
+  const raw = textOf(flag);
+  if (raw === "gom_vat" || raw === "chua_vat" || raw === "khong_ro") return raw;
+  const chu = fold(`${headerNote} ${raw}`);
+  if (coChu(chu, [
+    "chua bao gom vat", "chua bao gom gtgt", "chua co vat", "chua co gtgt",
+    "khong bao gom vat", "khong bao gom gtgt", "khong co vat", "khong co gtgt",
+    "vat tinh rieng", "gtgt tinh rieng", "cong vat", "cong gtgt",
+    "chua gom thue", "chua bao gom thue", "chua gom gtgt", "gia chua gom",
+    "gia chua bao gom", "tax excluded",
+  ])) return "chua_vat";
+  if (coChu(chu, [
+    "bao gom vat", "bao gom gtgt", "bao gom thue",
+    "da bao gom vat", "da bao gom gtgt", "da bao gom thue",
+    "gia da co vat", "gia da co gtgt", "gia da gom gtgt", "gia da gom vat",
+    "don hang bao gom vat", "don hang bao gom gtgt",
+    "gia bao gom vat", "gia bao gom gtgt", "da gom thue", "da gom gtgt",
+  ])) return "gom_vat";
+  return "khong_ro";
+}
+
+function nhanVatInline(flag: unknown, lines: PdfLine[]) {
+  if (flag === true || flag === "true" || flag === 1 || flag === "1") return true;
+  if (flag === false || flag === "false" || flag === 0 || flag === "0") return false;
+  const coVat = lines.filter((line) => line.vatPercent > 0).length;
+  return coVat >= Math.max(1, Math.ceil(lines.length / 2));
 }
 
 export async function readOrderPdf(file: Buffer): Promise<PdfOrder> {

@@ -69,14 +69,14 @@ export function tinhSoTongQuan(input: {
     sauThue = truocThue + tienThue;
   }
 
-  // Chi phí chung = tổng doanh thu sau thuế của hạng mục nhân từng tỷ lệ.
+  // Chi phí chung = tổng doanh thu trước thuế của hạng mục nhân từng tỷ lệ.
   let chiPhiChung: number | null = 0;
   let thieuChiPhi: string | null = null;
-  if (input.tyLeChungBps.length > 0 && sauThue === null) {
+  if (input.tyLeChungBps.length > 0 && truocThue === null) {
     chiPhiChung = null;
-    thieuChiPhi = "Chưa có doanh thu sau thuế để tính chi phí chung";
+    thieuChiPhi = "Chưa có doanh thu trước thuế để tính chi phí chung";
   } else {
-    chiPhiChung = input.tyLeChungBps.reduce((tong, bps) => tong + Math.round(((sauThue ?? 0) * bps) / 10000), 0);
+    chiPhiChung = input.tyLeChungBps.reduce((tong, bps) => tong + Math.round(((truocThue ?? 0) * bps) / 10000), 0);
   }
   const tyLeTndn = input.thueTndnBps ?? null;
   const coSoTndn = sauThue === null ? null : sauThue - input.tienDonHang - input.tienCongTrinh - tienGiaCong - tienVanChuyen;

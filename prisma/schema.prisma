@@ -388,15 +388,45 @@ model ProjectOrder {
   // SHA-256 của đúng tệp PDF. Dùng để chặn đọc lại cùng một file.
   fileHash     String             @default("")
   headerNote   String             @default("")
+  // gom_vat: giá/thành tiền trên tệp đã gồm VAT (tách ngược khi hiển thị).
+  // chua_vat: giá/thành tiền là net, VAT cộng thêm.
+  // khong_ro: không rõ — bắt người dùng xác nhận trước khi mở/lưu đơn.
+  vatMode      String             @default("khong_ro")
+  // true: bảng PDF có cột VAT từng dòng. Không ép VAT cả đơn, giữ nguyên từng dòng.
+  vatInline    Boolean            @default(false)
+  // Ghi chú nhận diện vatMode do AI trả về (debug/tooltip).
+  vatEvidence  String             @default("")
+  // Đặt cọc / tạm ứng ghi trên đơn. percentBps: 50% = 5000. amount: số tiền tuyệt đối (đồng).
+  depositPercentBps Int           @default(0)
+  depositAmount Int               @default(0)
+  // Câu gốc trên tệp nói về đặt cọc (để đối chiếu).
+  depositNote  String             @default("")
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   lines        ProjectOrderLine[]
+  // Phụ thu trên đơn: phí dịch vụ/cước… không nhập kho.
+  surcharges   ProjectOrderSurcharge[]
   deliveries   StockSlip[]
 
   @@index([projectId])
   @@index([partnerId])
   @@index([status])
   @@index([projectId, fileHash])
+}
+
+// Phụ thu gắn đơn đặt hàng. Tính SL × đơn giá + VAT, cộng vào tổng thanh toán.
+model ProjectOrderSurcharge {
+  id            String       @id @default(cuid())
+  orderId       String
+  order         ProjectOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sortOrder     Int
+  // Diễn giải phí (ví dụ: phí vận chuyển, cắt khoan…).
+  name          String
+  quantityMilli Int          @default(1000)
+  unitPrice     Int          @default(0)
+  taxBps        Int          @default(0)
+
+  @@index([orderId])
 }
 
 model ProjectOrderLine {
@@ -417,6 +447,8 @@ model ProjectOrderLine {
   quantityMilli Int          @default(0)
   unitPrice     Int          @default(0)
   taxBps        Int          @default(0)
+  // pdf: dòng bóc từ tệp. thu_cong: dòng gõ thêm trên đơn.
+  nguon         String       @default("pdf")
 
   @@index([orderId])
   @@index([materialId])
@@ -934,6 +966,8 @@ model FabricationContract {
   signedOn   String   @default("")
   // Đơn giá m² mặc định khi thêm dòng. Có thể sửa từng dòng.
   ratePerM2  Int?
+  // VAT % × 100 (0 / 500 / 800 / 1000). Áp cho cả hợp đồng.
+  taxBps     Int      @default(0)
   note       String   @default("")
   revision   Int      @default(1)
   createdAt  DateTime @default(now())
@@ -957,8 +991,10 @@ model FabricationLine {
   heightMm       Int                 @default(0)
   // Số tấm hoặc bộ, ×1000.
   quantityMilli  Int                 @default(0)
-  // Diện tích m² ×1000.
+  // Diện tích m² ×1000. Nếu areaOverrideMilli có giá trị thì bằng areaOverrideMilli, ngược lại = rộng × cao × SL.
   areaMilli      Int                 @default(0)
+  // Khối lượng m² ×1000 do người dùng nhập đè. Null = dùng công thức.
+  areaOverrideMilli Int?
   unitPrice      Int                 @default(0)
   amount         Int                 @default(0)
   note           String              @default("")

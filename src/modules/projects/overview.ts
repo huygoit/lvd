@@ -4,7 +4,7 @@ import { AppError } from "@/shared/errors";
 import { assertOwn } from "@/modules/system/access";
 import { costCategoryLabel, type CostCategory } from "@/modules/projects/cost-fields";
 import { hangMucAmount } from "@/modules/projects/item-fields";
-import { orderLineAmount } from "@/modules/projects/orders";
+import { orderLinePayable, orderSurchargePayable } from "@/modules/projects/orders";
 import { tongChiPhiGiaCong } from "@/modules/fabrication/service";
 import { tongChiPhiVanChuyen } from "@/modules/transport/service";
 import { thayChiPhiChung } from "@/modules/projects/shared-costs";
@@ -48,7 +48,13 @@ export async function readProjectOverview(user: User, projectId: string): Promis
     }),
     prisma.projectOrder.findMany({
       where: { projectId, status: "da_luu" },
-      select: { kind: true, lines: { select: { totalGrams: true, quantityMilli: true, unitPrice: true, lengthMm: true, barCount: true } } },
+      select: {
+        kind: true,
+        vatMode: true,
+        vatInline: true,
+        lines: { select: { totalGrams: true, quantityMilli: true, unitPrice: true, lengthMm: true, barCount: true, taxBps: true } },
+        surcharges: { select: { quantityMilli: true, unitPrice: true, taxBps: true } },
+      },
     }),
     prisma.projectSharedCost.findMany({
       where: { projectId },
@@ -71,10 +77,12 @@ export async function readProjectOverview(user: User, projectId: string): Promis
     .map(([nhom, tien]) => ({ nhom, nhan: nhanNhom(nhom), tien }))
     .sort((a, b) => b.tien - a.tien || a.nhan.localeCompare(b.nhan, "vi"));
 
-  const tienDonHang = donHang.reduce(
-    (tong, don) => tong + don.lines.reduce((dong, line) => dong + orderLineAmount(don.kind, line), 0),
-    0,
-  );
+  // Chi phí đơn hàng = dòng hàng + phụ thu, theo tổng thanh toán (đã gồm VAT) sát số trả NCC.
+  const tienDonHang = donHang.reduce((tong, don) => {
+    const hang = don.lines.reduce((dong, line) => dong + orderLinePayable(don.kind, line, don.vatMode, don.vatInline), 0);
+    const phu = don.surcharges.reduce((dong, row) => dong + orderSurchargePayable(row, don.vatMode, don.vatInline), 0);
+    return tong + hang + phu;
+  }, 0);
   const thay = thayChiPhiChung(user);
   const so = tinhSoTongQuan({
     vatPercent: project.vatPercent,

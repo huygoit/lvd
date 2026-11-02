@@ -350,7 +350,7 @@ export function ProjectBoard({
                     </>
                   ) : null}
                   {chiPhi && canEdit ? (
-                    <Button type="button" onClick={() => addCostRef.current?.add()}>Thêm chi phí</Button>
+                    <Button type="button" onClick={() => addCostRef.current?.add()}>Thêm chi phí khác</Button>
                   ) : null}
                   <Button type="button" variant="outline" onClick={() => open(null)}>Đóng</Button>
                 </div>

@@ -7,7 +7,7 @@ import { tinhSoTongQuan } from "@/modules/projects/overview-figures";
 import { writeAudit } from "@/modules/system/audit";
 import { assertOwn } from "@/modules/system/access";
 
-// rateBps là phần vạn. 2,5% lưu 250. Nhân với tổng doanh thu sau thuế của hạng mục.
+// rateBps là phần vạn. 2,5% lưu 250. Nhân với tổng doanh thu trước thuế của hạng mục.
 
 export type KhoanChung = {
   id: string;
@@ -58,7 +58,7 @@ function batBuoc(user: User, quyen: Capability) {
   }
 }
 
-async function doanhThuSauThue(projectId: string) {
+async function doanhThuTruocThue(projectId: string) {
   const [project, lines] = await Promise.all([
     prisma.project.findUnique({ where: { id: projectId }, select: { vatPercent: true } }),
     prisma.projectItem.findMany({ where: { projectId }, select: { unitPrice: true, quantityMilli: true } }),
@@ -69,20 +69,20 @@ async function doanhThuSauThue(projectId: string) {
     tyLeChungBps: [],
     tienDonHang: 0,
     tienCongTrinh: 0,
-  }).sauThue;
+  }).truocThue;
 }
 
 export async function listProjectSharedCosts(user: User, projectId: string) {
   if (!thayChiPhiChung(user)) throw new AppError("Bạn không có đủ quyền chi phí chung.", 403);
   await mo(user, projectId);
-  const [rows, sauThue] = await Promise.all([
+  const [rows, truocThue] = await Promise.all([
     prisma.projectSharedCost.findMany({
       where: { projectId },
       orderBy: { name: "asc" },
     }),
-    doanhThuSauThue(projectId),
+    doanhThuTruocThue(projectId),
   ]);
-  return { sauThue, rows: rows.map(toRow) };
+  return { truocThue, rows: rows.map(toRow) };
 }
 
 export async function createProjectSharedCost(user: User, projectId: string, input: { name?: unknown; rate?: unknown }) {

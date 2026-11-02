@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/sha
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { todayYmd } from "@/shared/lib/dates";
 import { digitsVnd, formatVnd } from "@/shared/lib/money";
-import { fabricationStatusLabel, fabricationSupplyLabel } from "@/modules/fabrication/fields";
+import { fabricationStatusLabel, fabricationSupplyLabel, fabricationVatBpsOptions } from "@/modules/fabrication/fields";
 
 type Workshop = { id: string; code: string; name: string };
 type Staff = { id: string; name: string };
@@ -20,6 +20,8 @@ type Line = {
   widthMm: string;
   heightMm: string;
   quantity: string;
+  // Khối lượng m² nhập đè. Chuỗi rỗng = dùng công thức.
+  areaOverride: string;
   unitPrice: string;
   note: string;
 };
@@ -42,7 +44,10 @@ type Contract = {
   status: string;
   signedOn: string;
   ratePerM2: number | null;
+  taxBps: number;
   note: string;
+  truocThue: number;
+  tienThue: number;
   tongHopDong: number;
   tongTamUng: number;
   conLai: number;
@@ -51,6 +56,7 @@ type Contract = {
     widthMm: number;
     heightMm: number;
     quantity: number;
+    areaOverrideM2: number | null;
     unitPrice: number;
     amount: number;
     note: string;
@@ -60,7 +66,8 @@ type Contract = {
 
 const o = "h-9 w-full rounded-lg border border-line bg-white px-2 text-sm text-ink outline-none focus:border-primary";
 
-function dienTich(width: string, height: string, qty: string) {
+// Khối lượng m² từ công thức Rộng × Cao × SL (đơn vị input là mm).
+function khoiLuongCongThuc(width: string, height: string, qty: string) {
   const w = Number(width);
   const h = Number(height);
   const q = Number(String(qty).replace(",", "."));
@@ -68,15 +75,25 @@ function dienTich(width: string, height: string, qty: string) {
   return Math.round((w * h * q) / 10_000) / 100;
 }
 
-function thanhTien(width: string, height: string, qty: string, price: string) {
-  const area = dienTich(width, height, qty);
-  const don = Number(String(price).replace(/\D/g, ""));
+// Khối lượng dùng để tính thành tiền: ưu tiên giá trị nhập đè, nếu rỗng mới lấy công thức.
+function khoiLuongDung(line: Line) {
+  const raw = line.areaOverride.trim().replace(",", ".");
+  if (raw) {
+    const so = Number(raw);
+    if (Number.isFinite(so) && so > 0) return so;
+  }
+  return khoiLuongCongThuc(line.widthMm, line.heightMm, line.quantity);
+}
+
+function thanhTien(line: Line) {
+  const area = khoiLuongDung(line);
+  const don = Number(line.unitPrice.replace(/\D/g, ""));
   if (!area || !don) return 0;
   return Math.round(area * don);
 }
 
 function dongTrong(rate: string): Line {
-  return { key: crypto.randomUUID(), name: "", widthMm: "", heightMm: "", quantity: "", unitPrice: rate, note: "" };
+  return { key: crypto.randomUUID(), name: "", widthMm: "", heightMm: "", quantity: "", areaOverride: "", unitPrice: rate, note: "" };
 }
 
 function ngayHien(value: string) {
@@ -109,6 +126,7 @@ export function ProjectFabrication({
   const [supplyKind, setSupplyKind] = useState("lvd_cap_vat_tu");
   const [signedOn, setSignedOn] = useState("");
   const [ratePerM2, setRatePerM2] = useState("");
+  const [taxBps, setTaxBps] = useState(0);
   const [note, setNote] = useState("");
   const [status, setStatus] = useState("da_luu");
   const [lines, setLines] = useState<Line[]>([dongTrong("")]);
@@ -140,6 +158,7 @@ export function ProjectFabrication({
     setSupplyKind("lvd_cap_vat_tu");
     setSignedOn("");
     setRatePerM2("");
+    setTaxBps(0);
     setNote("");
     setStatus("da_luu");
     setLines([dongTrong("")]);
@@ -156,6 +175,7 @@ export function ProjectFabrication({
     setSupplyKind(row.supplyKind);
     setSignedOn(row.signedOn);
     setRatePerM2(row.ratePerM2 ? String(row.ratePerM2) : "");
+    setTaxBps(row.taxBps);
     setNote(row.note);
     setStatus(row.status);
     setLines(row.lines.length
@@ -165,6 +185,7 @@ export function ProjectFabrication({
           widthMm: dong.widthMm ? String(dong.widthMm) : "",
           heightMm: dong.heightMm ? String(dong.heightMm) : "",
           quantity: String(dong.quantity),
+          areaOverride: dong.areaOverrideM2 === null ? "" : String(dong.areaOverrideM2),
           unitPrice: String(dong.unitPrice),
           note: dong.note,
         }))
@@ -186,6 +207,7 @@ export function ProjectFabrication({
         supplyKind,
         signedOn,
         ratePerM2,
+        taxBps: taxBps / 100,
         note,
         status,
         lines: lines.map((dong) => ({
@@ -193,6 +215,7 @@ export function ProjectFabrication({
           widthMm: dong.widthMm,
           heightMm: dong.heightMm,
           quantity: dong.quantity,
+          areaOverride: dong.areaOverride,
           unitPrice: dong.unitPrice,
           note: dong.note,
         })),
@@ -269,7 +292,8 @@ export function ProjectFabrication({
     }
   }
 
-  const tongDong = lines.reduce((tong, dong) => tong + thanhTien(dong.widthMm, dong.heightMm, dong.quantity, dong.unitPrice), 0);
+  const tongDong = lines.reduce((tong, dong) => tong + thanhTien(dong), 0);
+  const tienThueDong = Math.round((tongDong * taxBps) / 10000);
 
   return (
     <div className="space-y-3">
@@ -357,7 +381,13 @@ export function ProjectFabrication({
               </label>
               <label className="text-sm">
                 <span className="text-muted">Đơn giá m² mặc định</span>
-                <input className={`mt-1 ${o}`} value={ratePerM2} disabled={!canEdit} onChange={(event) => setRatePerM2(digitsVnd(event.target.value))} inputMode="numeric" />
+                <input
+                  className={`mt-1 ${o} text-right tabular-nums`}
+                  value={ratePerM2 ? formatVnd(Number(ratePerM2)) : ""}
+                  disabled={!canEdit}
+                  onChange={(event) => setRatePerM2(digitsVnd(event.target.value))}
+                  inputMode="numeric"
+                />
               </label>
               <label className="text-sm">
                 <span className="text-muted">Trạng thái</span>
@@ -382,37 +412,82 @@ export function ProjectFabrication({
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-soft hover:bg-soft">
-                      <TableHead>Nội dung</TableHead>
+                      <TableHead className="w-12 text-center">STT</TableHead>
+                      <TableHead>Nội dung, hạng mục</TableHead>
+                      <TableHead className="w-16 text-center">ĐVT</TableHead>
                       <TableHead className="w-20">Rộng</TableHead>
                       <TableHead className="w-20">Cao</TableHead>
                       <TableHead className="w-20">SL</TableHead>
-                      <TableHead className="w-24">m²</TableHead>
-                      <TableHead className="w-28">Đơn giá</TableHead>
-                      <TableHead className="w-28 text-right">Thành tiền</TableHead>
+                      <TableHead className="w-28">Khối lượng</TableHead>
+                      <TableHead className="w-32">Đơn giá</TableHead>
+                      <TableHead className="w-32 text-right">Thành tiền</TableHead>
                       {canEdit ? <TableHead className="w-16" /> : null}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {lines.map((dong) => (
-                      <TableRow key={dong.key}>
-                        <TableCell><input className={o} value={dong.name} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, name: event.target.value } : item))} /></TableCell>
-                        <TableCell><input className={o} value={dong.widthMm} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, widthMm: digitsVnd(event.target.value) } : item))} inputMode="numeric" /></TableCell>
-                        <TableCell><input className={o} value={dong.heightMm} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, heightMm: digitsVnd(event.target.value) } : item))} inputMode="numeric" /></TableCell>
-                        <TableCell><input className={o} value={dong.quantity} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, quantity: event.target.value } : item))} /></TableCell>
-                        <TableCell className="tabular-nums text-sm">{dienTich(dong.widthMm, dong.heightMm, dong.quantity).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}</TableCell>
-                        <TableCell><input className={o} value={dong.unitPrice} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, unitPrice: digitsVnd(event.target.value) } : item))} inputMode="numeric" /></TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">{formatVnd(thanhTien(dong.widthMm, dong.heightMm, dong.quantity, dong.unitPrice))}</TableCell>
-                        {canEdit ? (
+                    {lines.map((dong, index) => {
+                      const congThuc = khoiLuongCongThuc(dong.widthMm, dong.heightMm, dong.quantity);
+                      const dangDe = dong.areaOverride.trim() !== "";
+                      return (
+                        <TableRow key={dong.key}>
+                          <TableCell className="text-center text-sm text-muted tabular-nums">{index + 1}</TableCell>
+                          <TableCell><input className={o} value={dong.name} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, name: event.target.value } : item))} /></TableCell>
+                          <TableCell className="text-center text-sm text-muted">m²</TableCell>
+                          <TableCell><input className={o} value={dong.widthMm} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, widthMm: digitsVnd(event.target.value) } : item))} inputMode="numeric" /></TableCell>
+                          <TableCell><input className={o} value={dong.heightMm} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, heightMm: digitsVnd(event.target.value) } : item))} inputMode="numeric" /></TableCell>
+                          <TableCell><input className={o} value={dong.quantity} disabled={!canEdit} onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, quantity: event.target.value } : item))} /></TableCell>
                           <TableCell>
-                            <Button type="button" size="sm" variant="outline" disabled={lines.length <= 1} onClick={() => setLines((current) => current.filter((item) => item.key !== dong.key))}>Xóa</Button>
+                            <input
+                              className={`${o} text-right tabular-nums ${dangDe ? "border-primary bg-primary/5" : ""}`}
+                              value={dong.areaOverride}
+                              placeholder={congThuc ? congThuc.toLocaleString("vi-VN", { maximumFractionDigits: 2 }) : "—"}
+                              disabled={!canEdit}
+                              title={dangDe ? "Đang nhập đè. Xóa để quay về công thức." : "Để trống sẽ tự tính Rộng × Cao × SL."}
+                              onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, areaOverride: event.target.value } : item))}
+                              inputMode="decimal"
+                            />
                           </TableCell>
-                        ) : null}
-                      </TableRow>
-                    ))}
+                          <TableCell>
+                            <input
+                              className={`${o} text-right tabular-nums`}
+                              value={dong.unitPrice ? formatVnd(Number(dong.unitPrice)) : ""}
+                              disabled={!canEdit}
+                              onChange={(event) => setLines((current) => current.map((item) => item.key === dong.key ? { ...item, unitPrice: digitsVnd(event.target.value) } : item))}
+                              inputMode="numeric"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-sm">{formatVnd(thanhTien(dong))}</TableCell>
+                          {canEdit ? (
+                            <TableCell>
+                              <Button type="button" size="sm" variant="outline" disabled={lines.length <= 1} onClick={() => setLines((current) => current.filter((item) => item.key !== dong.key))}>Xóa</Button>
+                            </TableCell>
+                          ) : null}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
-              <p className="mt-2 text-right text-sm font-semibold tabular-nums">Tổng {formatVnd(tongDong)}</p>
+              <dl className="mt-3 ml-auto grid w-full max-w-sm grid-cols-[1fr_auto] gap-y-1 text-sm">
+                <dt className="text-muted">Tổng tiền trước thuế</dt>
+                <dd className="text-right font-medium tabular-nums">{formatVnd(tongDong)}</dd>
+                <dt className="flex items-center gap-2 text-muted">
+                  Thuế VAT
+                  <select
+                    className="h-7 rounded border border-line bg-white px-2 text-xs text-ink outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    value={taxBps}
+                    disabled={!canEdit}
+                    onChange={(event) => setTaxBps(Number(event.target.value))}
+                  >
+                    {fabricationVatBpsOptions.map((bps) => (
+                      <option key={bps} value={bps}>{bps / 100}%</option>
+                    ))}
+                  </select>
+                </dt>
+                <dd className="text-right font-medium tabular-nums">{formatVnd(tienThueDong)}</dd>
+                <dt className="pt-1 text-sm font-semibold text-ink">Thành tiền sau thuế</dt>
+                <dd className="pt-1 text-right text-base font-semibold tabular-nums text-ink">{formatVnd(tongDong + tienThueDong)}</dd>
+              </dl>
             </div>
 
             {suaId ? (

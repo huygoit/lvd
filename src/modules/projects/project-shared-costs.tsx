@@ -6,6 +6,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFoo
 import { Button } from "@/shared/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import type { KhoanChung } from "@/modules/projects/shared-costs";
+import { Plus } from "lucide-react";
 import { formatVnd } from "@/shared/lib/money";
 
 const oNhap = "h-9 w-full bg-transparent px-0 text-sm text-ink outline-none";
@@ -24,13 +25,13 @@ function tuDong(row: KhoanChung): Dong {
   return { key: row.id, id: row.id, name: row.name, tyLe: row.tyLe, editing: false, saving: false, error: "" };
 }
 
-function soTien(sauThue: number | null, tyLe: string) {
-  if (sauThue === null) return null;
+function soTien(truocThue: number | null, tyLe: string) {
+  if (truocThue === null) return null;
   const raw = tyLe.trim().replace("%", "").replace(/\s/g, "").replace(",", ".");
   if (!/^\d{1,3}(\.\d{1,2})?$/.test(raw)) return null;
   const so = Number(raw);
   if (!Number.isFinite(so) || so <= 0 || so > 100) return null;
-  return Math.round((sauThue * Math.round(so * 100)) / 10000);
+  return Math.round((truocThue * Math.round(so * 100)) / 10000);
 }
 
 function dongMoi(): Dong {
@@ -39,7 +40,7 @@ function dongMoi(): Dong {
 
 export function ProjectSharedCosts({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const [rows, setRows] = useState<Dong[] | null>(null);
-  const [sauThue, setSauThue] = useState<number | null>(null);
+  const [truocThue, setTruocThue] = useState<number | null>(null);
   const [loiTai, setLoiTai] = useState("");
   const [xoa, setXoa] = useState<Dong | null>(null);
   const [dangXoa, setDangXoa] = useState(false);
@@ -47,8 +48,8 @@ export function ProjectSharedCosts({ projectId, canEdit }: { projectId: string; 
   useEffect(() => {
     let huy = false;
     setRows(null);
-    callApi<{ sauThue: number | null; rows: KhoanChung[] }>(`/api/cong-trinh/${projectId}/chi-phi-chung`)
-      .then((data) => { if (!huy) { setSauThue(data.sauThue); setRows(data.rows.map(tuDong)); } })
+    callApi<{ truocThue: number | null; rows: KhoanChung[] }>(`/api/cong-trinh/${projectId}/chi-phi-chung`)
+      .then((data) => { if (!huy) { setTruocThue(data.truocThue); setRows(data.rows.map(tuDong)); } })
       .catch((caught: unknown) => { if (!huy) setLoiTai(caught instanceof Error ? caught.message : "Không tải được chi phí chung."); });
     return () => { huy = true; };
   }, [projectId]);
@@ -109,8 +110,8 @@ export function ProjectSharedCosts({ projectId, canEdit }: { projectId: string; 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted">Số tiền = tổng doanh thu sau thuế của công trình × %.</p>
-        {canEdit ? <Button type="button" size="sm" variant="outline" onClick={them}>Thêm</Button> : null}
+        <p className="text-sm text-muted">Số tiền = tổng doanh thu trước thuế của công trình × %.</p>
+        {canEdit ? <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={them}><Plus className="size-4" />Thêm chi phí chung</Button> : null}
       </div>
       {loiTai ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loiTai}</p> : null}
       <div className="overflow-x-auto rounded-xl border border-line bg-white">
@@ -153,7 +154,7 @@ export function ProjectSharedCosts({ projectId, canEdit }: { projectId: string; 
                   ) : <span className="font-semibold tabular-nums">{dong.tyLe}%</span>}
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums text-ink">
-                  {soTien(sauThue, dong.tyLe) === null ? "—" : formatVnd(soTien(sauThue, dong.tyLe) ?? 0)}
+                  {soTien(truocThue, dong.tyLe) === null ? "—" : formatVnd(soTien(truocThue, dong.tyLe) ?? 0)}
                 </TableCell>
                 {canEdit ? (
                   <TableCell>

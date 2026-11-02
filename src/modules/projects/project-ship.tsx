@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { callApi } from "@/shared/client/api";
-import { maskGioNgay, parseGioNgay } from "@/shared/lib/dates";
+import { GioNgayChon } from "@/shared/components/gio-ngay-chon";
 import { formatStockQty } from "@/shared/catalog/stock";
 import { Button } from "@/shared/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/shared/components/ui/sheet";
@@ -56,7 +56,7 @@ export function ProjectShip({
   const [rows, setRows] = useState<Dong[]>([]);
   const [noi, setNoi] = useState<"cong_trinh" | "kho" | "xuong">("cong_trinh");
   const [xuong, setXuong] = useState("");
-  const [gio, setGio] = useState("");
+  const [luc, setLuc] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -65,7 +65,7 @@ export function ProjectShip({
     setPlan(null);
     setError("");
     setNoi("cong_trinh");
-    setGio("");
+    setLuc("");
     callApi<Plan>(`/api/cong-trinh/${projectId}/don-hang/${orderId}/giao`)
       .then((data) => {
         setPlan(data);
@@ -79,12 +79,11 @@ export function ProjectShip({
     setSaving(true);
     setError("");
     try {
-      const expectedAt = parseGioNgay(gio);
-      if (!expectedAt) throw new Error("Nhập giờ và ngày theo dạng 14:30 25/10/2026.");
+      if (!luc) throw new Error("Chọn giờ, phút và ngày hàng tới.");
       const lines = rows.filter((row) => row.chon && row.qty.trim()).map((row) => ({ lineId: row.lineId, qty: row.qty }));
       await callApi(`/api/cong-trinh/${projectId}/don-hang/${orderId}/giao`, {
         method: "POST",
-        body: JSON.stringify({ destination: noi, workshopId: xuong, expectedAt, lines }),
+        body: JSON.stringify({ destination: noi, workshopId: xuong, expectedAt: luc, lines }),
       });
       const nhan = noi === "kho" ? "kho công ty" : noi === "xuong" ? "xưởng" : "công trình";
       onDone(`Đã báo ${nhan} nhận hàng`);
@@ -129,10 +128,12 @@ export function ProjectShip({
               )}
             </label>
           ) : null}
-          <label className="block">
+          <div>
             <span className="text-xs font-medium text-muted">Ngày giờ dự kiến hàng tới</span>
-            <input inputMode="numeric" autoComplete="off" placeholder="14:30 25/10/2026" value={gio} onChange={(event) => setGio(maskGioNgay(event.target.value))} className={`mt-1 ${o}`} />
-          </label>
+            <div className="mt-1">
+              <GioNgayChon key={orderId} onChange={setLuc} />
+            </div>
+          </div>
           {!plan ? <p className="text-sm text-muted">Đang tải các mã trên đơn...</p> : null}
           {plan && rows.length === 0 ? <p className="text-sm text-muted">Đơn chưa có mã vật tư để giao.</p> : null}
           <div className="space-y-2">

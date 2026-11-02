@@ -1,0 +1,104 @@
+.lich-ngay .rdp-root {
+  --rdp-accent-color: #0087b3;
+  --rdp-accent-background-color: #e7f7fd;
+  --rdp-today-color: #0087b3;
+  --rdp-day-height: 1.85rem;
+  --rdp-day-width: auto;
+  --rdp-day_button-height: 1.7rem;
+  --rdp-day_button-width: 1.7rem;
+  --rdp-nav-height: auto;
+  --rdp-nav_button-width: 1.75rem;
+  --rdp-nav_button-height: 1.75rem;
+  width: 100%;
+  font-size: 0.8125rem;
+}
+
+.lich-ngay .rdp-months,
+.lich-ngay .rdp-month {
+  width: 100%;
+  max-width: none;
+}
+
+.lich-ngay .rdp-month {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.35rem;
+}
+
+.lich-ngay .rdp-month_caption {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  height: auto;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.lich-ngay .rdp-dropdowns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.lich-ngay .rdp-dropdown_root {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d5ebf4;
+  border-radius: 8px;
+  background: #e7f7fd;
+  padding: 0.15rem 0.45rem;
+}
+
+.lich-ngay .rdp-caption_label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.lich-ngay .rdp-dropdown_root .rdp-chevron {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.lich-ngay .rdp-nav {
+  position: static;
+  inset: auto;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+  height: auto;
+  margin-left: auto;
+}
+
+.lich-ngay .rdp-button_previous,
+.lich-ngay .rdp-button_next {
+  position: static;
+  top: auto;
+  border: 1px solid #d5ebf4;
+  border-radius: 8px;
+  background: white;
+}
+
+.lich-ngay .rdp-nav .rdp-chevron {
+  width: 14px;
+  height: 14px;
+}
+
+.lich-ngay .rdp-month_grid {
+  width: 100%;
+  flex-basis: 100%;
+}
+
+.lich-ngay .rdp-selected {
+  font-size: inherit;
+}
