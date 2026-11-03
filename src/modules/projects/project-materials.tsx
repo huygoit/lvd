@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, ChevronDown, HardHat, Package, TriangleAlert, Truck, Wrench } from "lucide-react";
+import { Building2, ChevronDown, Factory, HardHat, Package, TriangleAlert, Truck, Warehouse } from "lucide-react";
 import { formatStockQty } from "@/shared/catalog/stock";
 import { callApi } from "@/shared/client/api";
 import { cn } from "@/shared/lib/cn";
@@ -45,6 +45,7 @@ type MaterialRow = {
   khoQty: number;
   xuongQty: number;
   transitQty: number;
+  notes: string[];
   mismatch: boolean;
   slips: Slip[];
   orders: SavedOrder[];
@@ -52,14 +53,15 @@ type MaterialRow = {
 
 type View = {
   materials: MaterialRow[];
-  counts: { site: number; installed: number; broken: number; away: number };
+  counts: { supplier: number; workshop: number; site: number; warehouse: number; broken: number };
 };
 
 const filters = [
+  { id: "supplier", label: "Đang ở nhà cung cấp", hint: "Còn tại NCC hoặc đang giao từ NCC", icon: Truck, tone: "text-primary bg-primary/10" },
+  { id: "workshop", label: "Đang ở xưởng gia công", hint: "Đã nhận tại xưởng", icon: Factory, tone: "text-primary bg-primary/10" },
   { id: "site", label: "Đang ở công trình", hint: "Còn hàng chưa lắp", icon: Building2, tone: "text-primary bg-primary/10" },
-  { id: "installed", label: "Đã lắp", hint: "Không còn dùng được", icon: Wrench, tone: "text-success bg-success/10" },
+  { id: "warehouse", label: "Đang ở nhà kho", hint: "Đã nhận về kho công ty", icon: Warehouse, tone: "text-primary bg-primary/10" },
   { id: "broken", label: "Hỏng, vỡ", hint: "Cần xử lý", icon: TriangleAlert, tone: "text-danger bg-danger/10" },
-  { id: "away", label: "Chưa ở công trình", hint: "Còn ở NCC, kho, xưởng hoặc đang giao", icon: Truck, tone: "text-primary bg-primary/10" },
 ] as const;
 
 type FilterId = (typeof filters)[number]["id"];
@@ -76,38 +78,17 @@ function lengthText(mm: number) {
 }
 
 function matches(row: MaterialRow, filter: FilterId) {
+  if (filter === "supplier") return row.ordered + row.made + row.held + row.supplierQty + row.transitQty + row.shipping > 0;
+  if (filter === "workshop") return row.xuongQty > 0;
   if (filter === "site") return row.site > 0;
-  if (filter === "installed") return row.installed > 0;
-  if (filter === "broken") return row.broken > 0;
-  return row.ordered + row.made + row.held + row.supplierQty + row.khoQty + row.xuongQty + row.transitQty + row.shipping > 0;
-}
-
-function awayText(row: MaterialRow) {
-  const order = [
-    row.khoQty > 0 ? `Kho ${formatStockQty(row.khoQty)}` : "",
-    row.xuongQty > 0 ? `Xưởng ${formatStockQty(row.xuongQty)}` : "",
-    row.transitQty > 0 ? `Đang giao ${formatStockQty(row.transitQty)}` : "",
-    row.supplierQty > 0 ? `Còn ở NCC ${formatStockQty(row.supplierQty)}` : "",
-  ].filter(Boolean).join(" · ");
-  const shipping = row.shipping > 0 ? `Đang giao ${formatStockQty(row.shipping)}` : "";
-  if (!row.glass) {
-    const held = row.held > 0 ? qtyText(row.held) : "";
-    return [shipping, held, order].filter(Boolean).join(" · ") || "—";
-  }
-  const parts = [
-    shipping,
-    row.ordered > 0 ? `Đã đặt ${formatStockQty(row.ordered)}` : "",
-    row.made > 0 ? `Đã sản xuất ${formatStockQty(row.made)}` : "",
-    row.held > 0 ? `NCC giữ ${formatStockQty(row.held)}` : "",
-    order,
-  ].filter(Boolean);
-  return parts.length ? parts.join(" · ") : "—";
+  if (filter === "warehouse") return row.khoQty > 0;
+  return row.broken > 0;
 }
 
 export function ProjectMaterials({ projectId }: { projectId: string }) {
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<FilterId>("site");
+  const [filter, setFilter] = useState<FilterId>("supplier");
   const [openId, setOpenId] = useState("");
 
   useEffect(() => {
@@ -130,7 +111,7 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {filters.map((item) => {
           const Icon = item.icon;
           const active = filter === item.id;
@@ -170,28 +151,29 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
         {!error && !view ? <p className="px-4 py-8 text-sm text-muted">Đang tải vật tư...</p> : null}
         {view && !error ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="border-b border-line bg-soft text-left text-muted">
                   <th className="px-4 py-2 font-medium">Mã</th>
                   <th className="px-4 py-2 font-medium">Tên</th>
                   <th className="px-4 py-2 font-medium">Đvt</th>
-                  <th className="px-4 py-2 text-right font-medium">SL</th>
+                  <th className="px-4 py-2 text-right font-medium">Tổng số lượng</th>
+                  <th className="px-4 py-2 text-right font-medium">Ở nhà cung cấp</th>
+                  <th className="px-4 py-2 text-right font-medium">Ở nhà xưởng</th>
                   <th className="px-4 py-2 text-right font-medium">Ở công trình</th>
-                  <th className="px-4 py-2 text-right font-medium">Đã lắp</th>
-                  <th className="px-4 py-2 text-right font-medium">Hỏng</th>
-                  <th className="px-4 py-2 font-medium">Chưa về</th>
+                  <th className="px-4 py-2 text-right font-medium">Ở nhà kho</th>
+                  <th className="px-4 py-2 text-right font-medium">Hỏng, vỡ</th>
                 </tr>
               </thead>
               <tbody>
                 {view.materials.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-muted">Chưa có vật tư nào ghi nhận cho công trình này.</td>
+                    <td colSpan={9} className="px-4 py-10 text-center text-muted">Chưa có vật tư nào ghi nhận cho công trình này.</td>
                   </tr>
                 ) : null}
                 {view.materials.length > 0 && rows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-muted">Không có mã nào trong nhóm này.</td>
+                    <td colSpan={9} className="px-4 py-10 text-center text-muted">Không có mã nào trong nhóm này.</td>
                   </tr>
                 ) : null}
                 {rows.map((row) => {
@@ -238,14 +220,15 @@ function FragmentRow({ row, open, onToggle }: { row: MaterialRow; open: boolean;
         </td>
         <td className="px-4 py-3 align-top text-muted">{row.unit}</td>
         <td className="px-4 py-3 align-top text-right font-medium tabular-nums text-ink">{qtyText(row.orderQty)}</td>
-        <td className="px-4 py-3 align-top text-right font-medium text-ink">{qtyText(row.site)}</td>
-        <td className="px-4 py-3 align-top text-right">{qtyText(row.installed)}</td>
-        <td className={cn("px-4 py-3 align-top text-right", row.broken > 0 && "font-medium text-danger")}>{qtyText(row.broken)}</td>
-        <td className="px-4 py-3 align-top text-muted">{awayText(row)}</td>
+        <td className="px-4 py-3 align-top text-right tabular-nums text-ink">{qtyText(row.supplierQty)}</td>
+        <td className="px-4 py-3 align-top text-right tabular-nums text-ink">{qtyText(row.xuongQty)}</td>
+        <td className="px-4 py-3 align-top text-right font-medium tabular-nums text-ink">{qtyText(row.site)}</td>
+        <td className="px-4 py-3 align-top text-right tabular-nums text-ink">{qtyText(row.khoQty)}</td>
+        <td className={cn("px-4 py-3 align-top text-right tabular-nums", row.broken > 0 && "font-medium text-danger")}>{qtyText(row.broken)}</td>
       </tr>
       {open ? (
         <tr className="border-b border-line bg-soft/70">
-          <td colSpan={8} className="space-y-3 px-4 py-3">
+          <td colSpan={9} className="space-y-3 px-4 py-3">
             {row.orders.length ? (
               <div>
                 <p className="mb-2 text-xs font-semibold text-muted">Đơn đã lưu</p>
@@ -265,19 +248,19 @@ function FragmentRow({ row, open, onToggle }: { row: MaterialRow; open: boolean;
             {row.slips.length === 0 ? <p className="text-sm text-muted">Chưa có phiếu.</p> : (
               <div>
                 <p className="mb-2 text-xs font-semibold text-muted">Phiếu</p>
-              <ul className="space-y-2">
-                {row.slips.map((slip) => (
-                  <li key={slip.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-white px-3 py-2 text-sm">
-                    <Link href={`/kho?muc=phieu&mo=xem&ho-so=${slip.id}`} className="font-semibold text-primary">{slip.code}</Link>
-                    <span className="text-muted">{slip.kindLabel}</span>
-                    <span>{slip.postedOn || "—"}</span>
-                    {slip.partnerName ? <span>{slip.partnerName}</span> : null}
-                    <span>Chứng từ {formatStockQty(slip.documentQty)}</span>
-                    <span>Thực nhận {formatStockQty(slip.receivedQty)}</span>
-                    {slip.mismatch ? <span className="font-medium text-danger">Lệch</span> : null}
-                  </li>
-                ))}
-              </ul>
+                <ul className="space-y-2">
+                  {row.slips.map((slip) => (
+                    <li key={slip.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-white px-3 py-2 text-sm">
+                      <Link href={`/kho?muc=phieu&mo=xem&ho-so=${slip.id}`} className="font-semibold text-primary">{slip.code}</Link>
+                      <span className="text-muted">{slip.kindLabel}</span>
+                      <span>{slip.postedOn || "—"}</span>
+                      {slip.partnerName ? <span>{slip.partnerName}</span> : null}
+                      <span>Chứng từ {formatStockQty(slip.documentQty)}</span>
+                      <span>Thực nhận {formatStockQty(slip.receivedQty)}</span>
+                      {slip.mismatch ? <span className="font-medium text-danger">Lệch</span> : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </td>

@@ -398,7 +398,7 @@ function present(order: {
     delivery,
     canShip,
     shipped,
-    statusLabel: order.status === "da_luu" ? "Đã lưu" : "Chờ xem",
+    statusLabel: order.status === "da_luu" ? "Đã lưu" : "Nháp",
     supplierName: order.partner?.name || order.supplierName,
     supplierCode: order.partner?.code ?? "",
     supplierAddress: order.supplierAddress,

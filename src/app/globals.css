@@ -57,6 +57,8 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-border: var(--border);
+  /* Border mặc định dùng màu line, tránh đen theo màu chữ. */
+  --default-border-color: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);

@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import type { KhoanChung } from "@/modules/projects/shared-costs";
-import { Plus } from "lucide-react";
+import { cn } from "@/shared/lib/cn";
 import { formatVnd } from "@/shared/lib/money";
 
-const oNhap = "h-9 w-full bg-transparent px-0 text-sm text-ink outline-none";
+// Ô nhập / tiêu đề — cùng cảm giác bảng Phụ thu trên đơn đặt hàng.
+const oNhap = "box-border h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-sm text-ink outline-none hover:border-line focus:border-primary focus:bg-white";
+const tieuDe = "h-10 px-2 text-left align-middle text-sm font-medium";
+const tieuDeSo = "h-10 px-2 text-right align-middle text-sm font-medium tabular-nums";
+const o = "p-0 align-middle";
 
 type Dong = {
   key: string;
@@ -107,73 +112,99 @@ export function ProjectSharedCosts({ projectId, canEdit }: { projectId: string; 
     }
   }
 
+  const soCot = canEdit ? 4 : 3;
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted">Số tiền = tổng doanh thu trước thuế của công trình × %.</p>
-        {canEdit ? <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={them}><Plus className="size-4" />Thêm chi phí chung</Button> : null}
-      </div>
-      {loiTai ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loiTai}</p> : null}
-      <div className="overflow-x-auto rounded-xl border border-line bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-soft hover:bg-soft">
-              <TableHead>Tên chi phí</TableHead>
-              <TableHead className="w-28 text-right">%</TableHead>
-              <TableHead className="w-40 text-right">Số tiền</TableHead>
-              {canEdit ? <TableHead className="w-36">Thao tác</TableHead> : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows && rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={canEdit ? 4 : 3} className="py-8 text-center text-sm text-muted">Chưa có chi phí chung.</TableCell>
-              </TableRow>
-            ) : null}
+    <>
+      {/* Khung giống khối Phụ thu trên đơn đặt hàng. */}
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-soft px-3 py-2">
+          <div>
+            <p className="text-sm font-semibold text-ink">Chi phí chung</p>
+            <p className="text-xs text-muted">Số tiền = tổng doanh thu trước thuế × %</p>
+          </div>
+          {canEdit ? (
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={them}>
+              <Plus className="size-4" aria-hidden />
+              Thêm chi phí chung
+            </Button>
+          ) : null}
+        </div>
+        {loiTai ? <p className="mx-3 mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loiTai}</p> : null}
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="border-b border-line bg-soft text-muted">
+              <th className={tieuDe}>Tên chi phí</th>
+              <th className={cn(tieuDeSo, "w-28")}>%</th>
+              <th className={cn(tieuDeSo, "w-40")}>Số tiền</th>
+              {canEdit ? <th className={cn(tieuDe, "w-36")}>Thao tác</th> : null}
+            </tr>
+          </thead>
+          <tbody>
             {rows === null ? (
-              <TableRow>
-                <TableCell colSpan={canEdit ? 4 : 3} className="py-8 text-center text-sm text-muted">Đang tải...</TableCell>
-              </TableRow>
+              <tr>
+                <td colSpan={soCot} className="px-3 py-8 text-center text-sm text-muted">Đang tải...</td>
+              </tr>
+            ) : null}
+            {rows && rows.length === 0 ? (
+              <tr>
+                <td colSpan={soCot} className="px-3 py-6 text-center text-sm text-muted">Chưa có chi phí chung. Bấm «Thêm chi phí chung».</td>
+              </tr>
             ) : null}
             {rows?.map((dong) => (
-              <TableRow key={dong.key} className={dong.error ? "bg-danger/5" : undefined}>
-                <TableCell>
+              <tr key={dong.key} className={cn("border-b border-line last:border-0", dong.error && "bg-danger/5")}>
+                <td className={o}>
                   {dong.editing ? (
                     <input value={dong.name} placeholder="Tên chi phí" onChange={(event) => sua(dong.key, { name: event.target.value })} className={oNhap} />
-                  ) : <span className="font-medium text-ink">{dong.name}</span>}
-                </TableCell>
-                <TableCell className="text-right">
+                  ) : <span className="flex h-9 items-center px-2 font-medium text-ink">{dong.name}</span>}
+                </td>
+                <td className={o}>
                   {dong.editing ? (
                     <input
                       value={dong.tyLe}
                       inputMode="decimal"
                       placeholder="2,5"
                       onChange={(event) => sua(dong.key, { tyLe: event.target.value })}
-                      className={`${oNhap} text-right tabular-nums`}
+                      className={cn(oNhap, "text-right tabular-nums")}
                     />
-                  ) : <span className="font-semibold tabular-nums">{dong.tyLe}%</span>}
-                </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums text-ink">
-                  {soTien(truocThue, dong.tyLe) === null ? "—" : formatVnd(soTien(truocThue, dong.tyLe) ?? 0)}
-                </TableCell>
+                  ) : <span className="flex h-9 items-center justify-end px-2 font-semibold tabular-nums">{dong.tyLe}%</span>}
+                </td>
+                <td className={o}>
+                  <span className="flex h-9 items-center justify-end px-2 font-semibold tabular-nums text-ink">
+                    {soTien(truocThue, dong.tyLe) === null ? "—" : formatVnd(soTien(truocThue, dong.tyLe) ?? 0)}
+                  </span>
+                </td>
                 {canEdit ? (
-                  <TableCell>
-                    <div className="flex flex-nowrap items-center gap-1">
+                  <td className={o}>
+                    <div className="flex h-9 flex-nowrap items-center gap-1.5 px-2">
                       {dong.editing ? (
-                        <Button type="button" size="sm" className="shrink-0" disabled={dong.saving} onClick={() => void luu(dong)}>{dong.saving ? "Đang lưu" : "Lưu"}</Button>
+                        <ActionBadge tone="primary" className="shrink-0" disabled={dong.saving} onClick={() => void luu(dong)}>
+                          <Save className="size-3.5" aria-hidden />
+                          {dong.saving ? "Đang lưu" : "Lưu"}
+                        </ActionBadge>
                       ) : (
-                        <Button type="button" size="sm" variant="ghost" className="shrink-0" onClick={() => sua(dong.key, { editing: true })}>Sửa</Button>
+                        <ActionBadge className="shrink-0" onClick={() => sua(dong.key, { editing: true })}>
+                          <Pencil className="size-3.5" aria-hidden /> Sửa
+                        </ActionBadge>
                       )}
-                      <Button type="button" size="sm" variant="ghost" className="shrink-0 text-danger" disabled={dong.saving} onClick={() => setXoa(dong)}>Xóa</Button>
+                      <button
+                        type="button"
+                        disabled={dong.saving}
+                        onClick={() => setXoa(dong)}
+                        className="flex h-8 items-center gap-1 px-2 text-xs font-semibold text-danger hover:bg-danger/10 disabled:opacity-40"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden /> Xóa
+                      </button>
                     </div>
-                    {dong.error ? <p className="mt-1 text-xs text-danger">{dong.error}</p> : null}
-                  </TableCell>
+                    {dong.error ? <p className="px-2 pb-1 text-xs text-danger">{dong.error}</p> : null}
+                  </td>
                 ) : null}
-              </TableRow>
+              </tr>
             ))}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
+
       <AlertDialog open={xoa !== null} onOpenChange={(open) => { if (!open && !dangXoa) setXoa(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -181,11 +212,11 @@ export function ProjectSharedCosts({ projectId, canEdit }: { projectId: string; 
             <AlertDialogDescription>{xoa?.name || "Dòng mới"} sẽ không còn tính trên công trình này.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" disabled={dangXoa} onClick={() => setXoa(null)}>Đóng</Button>
-            <Button type="button" variant="destructive" disabled={dangXoa} onClick={() => void xoaDong()}>{dangXoa ? "Đang xóa" : "Xóa"}</Button>
+            <Button type="button" variant="outline" disabled={dangXoa} onClick={() => setXoa(null)}><X className="size-4" aria-hidden /> Đóng</Button>
+            <Button type="button" variant="destructive" disabled={dangXoa} onClick={() => void xoaDong()}><Trash2 className="size-4" aria-hidden /> {dangXoa ? "Đang xóa" : "Xóa"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

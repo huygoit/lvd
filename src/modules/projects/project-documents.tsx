@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Trash2, Upload } from "lucide-react";
+import { Download, Pencil, Save, Trash2, Upload, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge, listPanelClass } from "@/shared/components/action-badge";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
@@ -206,7 +207,7 @@ export function ProjectDocuments({ projectId, canEdit }: { projectId: string; ca
           <p className="mt-1 text-sm text-muted">Hãy tải hợp đồng, bản vẽ hoặc biên bản của công trình này.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[18px] border border-line bg-white">
+        <div className={listPanelClass}>
           <Table>
             <TableHeader>
               <TableRow className="bg-soft hover:bg-soft">
@@ -240,23 +241,28 @@ export function ProjectDocuments({ projectId, canEdit }: { projectId: string; ca
                   <TableCell className="whitespace-nowrap">{ngayGio(row.createdAt)}</TableCell>
                   <TableCell>{row.uploadedByName}</TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-1">
+                    <div className="flex flex-wrap justify-end gap-1.5">
                       {canEdit ? (
                         sua?.id === row.id ? (
-                          <Button type="button" size="sm" variant="ghost" disabled={sua.saving} onClick={() => void luuTen(row)}>{sua.saving ? "Đang lưu" : "Lưu"}</Button>
+                          <ActionBadge tone="primary" disabled={sua.saving} onClick={() => void luuTen(row)}>
+                            <Save className="size-3.5" aria-hidden />
+                            {sua.saving ? "Đang lưu" : "Lưu"}
+                          </ActionBadge>
                         ) : (
-                          <Button type="button" size="sm" variant="ghost" onClick={() => setSua({ id: row.id, name: row.fileName, saving: false, error: "" })}>Sửa</Button>
+                          <ActionBadge onClick={() => setSua({ id: row.id, name: row.fileName, saving: false, error: "" })}>
+                            <Pencil className="size-3.5" aria-hidden /> Sửa
+                          </ActionBadge>
                         )
                       ) : null}
-                      <Button type="button" size="sm" variant="ghost" onClick={() => void taiXuong(row)}>
-                        <Download />
+                      <ActionBadge onClick={() => void taiXuong(row)}>
+                        <Download className="size-3.5" aria-hidden />
                         Tải xuống
-                      </Button>
+                      </ActionBadge>
                       {canEdit ? (
-                        <Button type="button" size="sm" variant="ghost" className="text-danger" onClick={() => setPending(row)}>
-                          <Trash2 />
+                        <ActionBadge tone="danger" onClick={() => setPending(row)}>
+                          <Trash2 className="size-3.5" aria-hidden />
                           Xóa
-                        </Button>
+                        </ActionBadge>
                       ) : null}
                     </div>
                   </TableCell>
@@ -275,8 +281,8 @@ export function ProjectDocuments({ projectId, canEdit }: { projectId: string; ca
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" disabled={deleting} onClick={() => setPending(null)}>Đóng</Button>
-            <Button type="button" variant="destructive" disabled={deleting} onClick={() => void xoa()}>{deleting ? "Đang xóa" : "Xóa"}</Button>
+            <Button type="button" variant="outline" disabled={deleting} onClick={() => setPending(null)}><X className="size-4" aria-hidden /> Đóng</Button>
+            <Button type="button" variant="destructive" disabled={deleting} onClick={() => void xoa()}><Trash2 className="size-4" aria-hidden /> {deleting ? "Đang xóa" : "Xóa"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

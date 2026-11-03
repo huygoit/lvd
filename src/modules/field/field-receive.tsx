@@ -27,6 +27,10 @@ type SlipDetail = {
   projectName: string;
   sourceLabel: string;
   toKind: string;
+  fabricationContractCode: string;
+  fabricationContractName: string;
+  fabricationContractStatus: string;
+  workshopName: string;
   expectedAt: string;
   lines: SlipLine[];
   photos: SlipPhoto[];
@@ -206,6 +210,13 @@ export function ReceiveScreen({ slipId, onBack, noi = "cong_trinh" }: { slipId: 
               <p className="text-sm text-white/75">{detail.code} · {detail.sourceLabel}</p>
               <h1 className="mt-1 text-2xl font-semibold leading-tight">{detail.projectName}</h1>
               <p className="mt-2 text-sm text-white/80">{detail.projectCode}. {detail.expectedAt ? `Dự kiến ${gioDen(detail.expectedAt)}. ` : ""}Hàng nhận rồi vẫn chưa phải đã lắp.</p>
+              {detail.toKind === "xuong" && detail.fabricationContractCode ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-white/10 px-3 py-2.5 text-sm">
+                  <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold">{detail.fabricationContractCode}</span>
+                  <span className="font-medium">{detail.fabricationContractName || detail.workshopName}</span>
+                  {detail.fabricationContractStatus ? <span className="text-white/75">· {detail.fabricationContractStatus}</span> : null}
+                </div>
+              ) : null}
             </header>
             {done ? (
               <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900">

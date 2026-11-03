@@ -1,5 +1,10 @@
 import { AppError } from "@/shared/errors";
 import { isYmd } from "@/shared/lib/dates";
+import {
+  contractStatusLabel,
+  parseContractStatus,
+  type ContractStatus,
+} from "@/shared/catalog/contract-status";
 
 export const transportPricingLabel = {
   theo_chuyen: "Theo chuyến",
@@ -10,13 +15,10 @@ export const transportPricingLabel = {
 
 export type TransportPricing = keyof typeof transportPricingLabel;
 
-export const transportStatusLabel = {
-  nhap: "Nháp",
-  da_luu: "Đã lưu",
-  ket_thuc: "Kết thúc",
-} as const;
-
-export type TransportStatus = keyof typeof transportStatusLabel;
+// Alias dùng chung — trạng thái hợp đồng vận chuyển = catalog dùng chung.
+export const transportStatusLabel = contractStatusLabel;
+export type TransportStatus = ContractStatus;
+export const parseStatus = parseContractStatus;
 
 export const transportUnits = ["chuyến", "tấn", "kg", "gói"] as const;
 
@@ -24,12 +26,6 @@ export function parsePricing(value: unknown): TransportPricing {
   const text = String(value ?? "").trim();
   if (text in transportPricingLabel) return text as TransportPricing;
   throw new AppError("Chọn cách tính cước vận chuyển.", 400);
-}
-
-export function parseStatus(value: unknown): TransportStatus {
-  const text = String(value ?? "").trim();
-  if (text in transportStatusLabel) return text as TransportStatus;
-  throw new AppError("Trạng thái hợp đồng vận chuyển không hợp lệ.", 400);
 }
 
 export function chuoi(value: unknown, dai: number) {
@@ -45,7 +41,7 @@ export function ngayTuyChon(value: unknown) {
 
 export function ngayBatBuoc(value: unknown) {
   const text = String(value ?? "").trim();
-  if (!isYmd(text)) throw new AppError("Ngày tạm ứng không hợp lệ.", 400);
+  if (!isYmd(text)) throw new AppError("Ngày thanh toán không hợp lệ.", 400);
   return text;
 }
 

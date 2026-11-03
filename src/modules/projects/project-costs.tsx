@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useState } from "react";
+import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { NgayNhap } from "@/shared/components/ngay-nhap";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { todayYmd } from "@/shared/lib/dates";
+import { cn } from "@/shared/lib/cn";
 import { digitsVnd, formatCount, formatVnd } from "@/shared/lib/money";
 import { costCategoryLabel, type CostCategory } from "@/modules/projects/cost-fields";
 import { ProjectSharedCosts } from "@/modules/projects/project-shared-costs";
@@ -17,7 +19,13 @@ function ngay(value: string) {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
-const oNhap = "h-9 w-full bg-transparent px-0 text-sm text-ink outline-none";
+// Ô nhập / tiêu đề — cùng cảm giác bảng Phụ thu trên đơn đặt hàng.
+const oNhap = "box-border h-9 w-full rounded-md border border-transparent bg-transparent px-2 text-sm text-ink outline-none hover:border-line focus:border-primary focus:bg-white";
+const tieuDe = "h-10 px-2 text-left align-middle text-sm font-medium";
+const tieuDeSo = "h-10 px-2 text-right align-middle text-sm font-medium tabular-nums";
+const o = "p-0 align-middle";
+const chu = "flex h-9 items-center px-2 text-sm text-ink";
+const chuPhai = cn(chu, "justify-end font-semibold tabular-nums");
 
 type Staff = { id: string; name: string };
 
@@ -114,22 +122,18 @@ function dongMoi(payerId: string): Line {
   return line;
 }
 
-export type ChiPhiActions = { add: () => void };
-
 export function ProjectCosts({
   projectId,
   staff,
   canEdit,
   canSeeShared,
   defaultPayerId,
-  addCostRef,
 }: {
   projectId: string;
   staff: Staff[];
   canEdit: boolean;
   canSeeShared: boolean;
   defaultPayerId: string;
-  addCostRef: RefObject<ChiPhiActions | null>;
 }) {
   const [lines, setLines] = useState<Line[] | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -159,8 +163,6 @@ export function ProjectCosts({
     setLoadError("");
     setLines((current) => [dongMoi(defaultPayerId), ...(current ?? [])]);
   }
-
-  addCostRef.current = canEdit ? { add: them } : null;
 
   async function luu(line: Line) {
     suaDong(line.key, { saving: true, error: "" });
@@ -216,95 +218,131 @@ export function ProjectCosts({
   const tong = (lines ?? []).filter((line) => line.id).reduce((sum, line) => sum + Number(line.amount || 0), 0);
   const daLuu = (lines ?? []).filter((line) => line.id).length;
 
+  const soCot = canEdit ? 7 : 6;
+
   return (
     <div className="space-y-3">
-      {canSeeShared ? <ProjectSharedCosts projectId={projectId} canEdit /> : null}
-      <p className="text-sm text-muted">
-        {lines ? `${daLuu} khoản.` : "Đang tải chi phí..."}
-        {daLuu > 0 ? ` Tổng ${formatVnd(tong)}.` : ""}
-      </p>
-      {loadError ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loadError}</p> : null}
-      <div className="overflow-x-auto rounded-xl border border-line bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-soft hover:bg-soft">
-              <TableHead className="w-36">Ngày</TableHead>
-              <TableHead className="w-36">Nhóm</TableHead>
-              <TableHead>Nội dung</TableHead>
-              <TableHead className="w-40">Người chi</TableHead>
-              <TableHead className="w-36 text-right">Số tiền</TableHead>
-              <TableHead className="w-40">Ghi chú</TableHead>
-              {canEdit ? <TableHead className="w-40 whitespace-nowrap">Thao tác</TableHead> : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      {canSeeShared ? <ProjectSharedCosts projectId={projectId} canEdit={canEdit} /> : null}
+
+      {/* Khung giống khối Phụ thu trên đơn đặt hàng. */}
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-soft px-3 py-2">
+          <div>
+            <p className="text-sm font-semibold text-ink">Chi phí khác</p>
+            <p className="text-xs text-muted">
+              {lines === null ? "Đang tải..." : `${daLuu} khoản`}
+              {daLuu > 0 ? ` · Tổng ${formatVnd(tong)}` : ""}
+            </p>
+          </div>
+          {canEdit ? (
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={them}>
+              <Plus className="size-4" aria-hidden />
+              Thêm chi phí khác
+            </Button>
+          ) : null}
+        </div>
+        {loadError ? <p className="mx-3 mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loadError}</p> : null}
+        <table className="w-full min-w-[880px] text-sm">
+          <thead>
+            <tr className="border-b border-line bg-soft text-muted">
+              <th className={cn(tieuDe, "w-36")}>Ngày</th>
+              <th className={cn(tieuDe, "w-36")}>Nhóm</th>
+              <th className={tieuDe}>Nội dung</th>
+              <th className={cn(tieuDe, "w-40")}>Người chi</th>
+              <th className={cn(tieuDeSo, "w-36")}>Số tiền</th>
+              <th className={cn(tieuDe, "w-40")}>Ghi chú</th>
+              {canEdit ? <th className={cn(tieuDe, "w-40")}>Thao tác</th> : null}
+            </tr>
+          </thead>
+          <tbody>
             {lines && lines.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={canEdit ? 7 : 6} className="py-10 text-center text-sm text-muted">Chưa có chi phí.</TableCell>
-              </TableRow>
+              <tr>
+                <td colSpan={soCot} className="px-3 py-6 text-center text-sm text-muted">Chưa có chi phí khác. Bấm «Thêm chi phí khác».</td>
+              </tr>
+            ) : null}
+            {lines === null ? (
+              <tr>
+                <td colSpan={soCot} className="px-3 py-8 text-center text-sm text-muted">Đang tải...</td>
+              </tr>
             ) : null}
             {lines?.map((line) => (
-              <TableRow key={line.key} className={line.error || line.warn ? "bg-danger/5" : undefined}>
-                <TableCell>
+              <tr key={line.key} className={cn("border-b border-line last:border-0", (line.error || line.warn) && "bg-danger/5")}>
+                <td className={o}>
                   {line.editing ? (
                     <NgayNhap value={line.occurredOn} onChange={(value) => suaDong(line.key, { occurredOn: value })} className={oNhap} />
-                  ) : ngay(line.occurredOn)}
-                </TableCell>
-                <TableCell>
+                  ) : <span className={chu}>{ngay(line.occurredOn)}</span>}
+                </td>
+                <td className={o}>
                   {line.editing ? (
                     <select value={line.category} onChange={(event) => suaDong(line.key, { category: nhomHopLe(event.target.value) })} className={oNhap}>
                       {nhom.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
-                  ) : costCategoryLabel[line.category]}
-                </TableCell>
-                <TableCell>
+                  ) : <span className={chu}>{costCategoryLabel[line.category]}</span>}
+                </td>
+                <td className={o}>
                   {line.editing ? (
                     <input value={line.content} placeholder="Nội dung chi" onChange={(event) => suaDong(line.key, { content: event.target.value })} className={oNhap} />
-                  ) : <span className="font-medium text-ink">{line.content}</span>}
-                  {line.nghiTrung && !line.editing ? <p className="mt-1 text-xs text-danger">Nghi trùng trong 3 ngày</p> : null}
-                </TableCell>
-                <TableCell>
+                  ) : (
+                    <span className={cn(chu, "font-medium")}>
+                      {line.content}
+                      {line.nghiTrung ? <span className="ml-2 text-xs font-normal text-danger">Nghi trùng 3 ngày</span> : null}
+                    </span>
+                  )}
+                </td>
+                <td className={o}>
                   {line.editing ? (
                     <select value={line.payerId} onChange={(event) => suaDong(line.key, { payerId: event.target.value })} className={oNhap}>
                       <option value="">Chọn</option>
                       {staff.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                     </select>
-                  ) : (staff.find((item) => item.id === line.payerId)?.name || "—")}
-                </TableCell>
-                <TableCell className="text-right">
+                  ) : <span className={chu}>{staff.find((item) => item.id === line.payerId)?.name || "—"}</span>}
+                </td>
+                <td className={o}>
                   {line.editing ? (
                     <input
                       value={line.amount ? formatCount(Number(line.amount)) : ""}
                       inputMode="numeric"
                       placeholder="0"
                       onChange={(event) => suaDong(line.key, { amount: digitsVnd(event.target.value) })}
-                      className={`${oNhap} text-right tabular-nums`}
+                      className={cn(oNhap, "text-right tabular-nums")}
                     />
-                  ) : <span className="font-semibold tabular-nums">{line.amount ? formatVnd(Number(line.amount)) : "—"}</span>}
-                </TableCell>
-                <TableCell>
+                  ) : <span className={chuPhai}>{line.amount ? formatVnd(Number(line.amount)) : "—"}</span>}
+                </td>
+                <td className={o}>
                   {line.editing ? (
                     <input value={line.note} placeholder="Ghi chú" onChange={(event) => suaDong(line.key, { note: event.target.value })} className={oNhap} />
-                  ) : (line.note || "—")}
-                </TableCell>
+                  ) : <span className={chu}>{line.note || "—"}</span>}
+                </td>
                 {canEdit ? (
-                  <TableCell>
-                    <div className="flex flex-nowrap items-center gap-1">
+                  <td className={o}>
+                    <div className="flex h-9 flex-nowrap items-center gap-1.5 px-2">
                       {line.editing ? (
-                        <Button type="button" size="sm" className="shrink-0" disabled={line.saving} onClick={() => void luu(line)}>{line.saving ? "Đang lưu" : line.warn ? "Vẫn lưu" : "Lưu"}</Button>
+                        <ActionBadge tone="primary" className="shrink-0" disabled={line.saving} onClick={() => void luu(line)}>
+                          <Save className="size-3.5" aria-hidden />
+                          {line.saving ? "Đang lưu" : line.warn ? "Vẫn lưu" : "Lưu"}
+                        </ActionBadge>
                       ) : (
-                        <Button type="button" size="sm" variant="ghost" className="shrink-0" onClick={() => suaDong(line.key, { editing: true })}>Sửa</Button>
+                        <ActionBadge className="shrink-0" onClick={() => suaDong(line.key, { editing: true })}>
+                          <Pencil className="size-3.5" aria-hidden /> Sửa
+                        </ActionBadge>
                       )}
-                      <Button type="button" size="sm" variant="ghost" className="shrink-0 text-danger" disabled={line.saving} onClick={() => setPendingDelete(line)}>Xóa</Button>
+                      <button
+                        type="button"
+                        disabled={line.saving}
+                        onClick={() => setPendingDelete(line)}
+                        className="flex h-8 items-center gap-1 px-2 text-xs font-semibold text-danger hover:bg-danger/10 disabled:opacity-40"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden /> Xóa
+                      </button>
                     </div>
-                    {line.warn ? <p className="mt-1 text-xs text-danger">{line.warn}</p> : null}
-                    {line.error ? <p className="mt-1 text-xs text-danger">{line.error}</p> : null}
-                  </TableCell>
+                    {line.warn ? <p className="px-2 pb-1 text-xs text-danger">{line.warn}</p> : null}
+                    {line.error ? <p className="px-2 pb-1 text-xs text-danger">{line.error}</p> : null}
+                  </td>
                 ) : null}
-              </TableRow>
+              </tr>
             ))}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
 
       <AlertDialog open={pendingDelete !== null} onOpenChange={(next) => { if (!next && !deleting) setPendingDelete(null); }}>
@@ -316,8 +354,8 @@ export function ProjectCosts({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" disabled={deleting} onClick={() => setPendingDelete(null)}>Đóng</Button>
-            <Button type="button" variant="destructive" disabled={deleting} onClick={() => void xoa()}>{deleting ? "Đang xóa" : "Xóa"}</Button>
+            <Button type="button" variant="outline" disabled={deleting} onClick={() => setPendingDelete(null)}><X className="size-4" aria-hidden /> Đóng</Button>
+            <Button type="button" variant="destructive" disabled={deleting} onClick={() => void xoa()}><Trash2 className="size-4" aria-hidden /> {deleting ? "Đang xóa" : "Xóa"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

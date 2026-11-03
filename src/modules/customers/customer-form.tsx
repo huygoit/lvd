@@ -1,5 +1,7 @@
 "use client";
 
+import { Save, X } from "lucide-react";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -257,18 +259,18 @@ export function CustomerForm({
           {mode === "create" ? (
             <>
               <button name="intent" value="quote" className={buttonPrimary} disabled={busy}>
-                Lưu và lập báo giá
+                <Save className="size-4" aria-hidden /> Lưu và lập báo giá
               </button>
               <button name="intent" value="project" className={buttonGhost} disabled={busy}>
-                Lưu và tạo công trình
+                <Save className="size-4" aria-hidden /> Lưu và tạo công trình
               </button>
               <button name="intent" value="save" className={buttonGhost} disabled={busy}>
-                Chỉ lưu
+                <Save className="size-4" aria-hidden /> Chỉ lưu
               </button>
             </>
           ) : (
             <button name="intent" value="save" className={buttonPrimary} disabled={busy}>
-              Lưu thay đổi
+              <Save className="size-4" aria-hidden /> Lưu thay đổi
             </button>
           )}
         </div>
@@ -277,10 +279,10 @@ export function CustomerForm({
       {inSheet ? (
         <div className="sticky bottom-0 z-10 flex shrink-0 justify-end gap-2 border-t border-line bg-white px-5 py-3">
           <Button type="button" variant="outline" disabled={busy} onClick={() => (onClose ? onClose() : router.push("/khach-hang"))}>
-            Đóng
+            <X className="size-4" aria-hidden /> Đóng
           </Button>
           <Button type="submit" disabled={busy || Boolean(savedId)}>
-            {busy ? "Đang lưu" : "Lưu"}
+            <Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu"}
           </Button>
         </div>
       ) : null}

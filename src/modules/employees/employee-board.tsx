@@ -3,8 +3,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Filter, Pencil, Plus, Save, X } from "lucide-react";
 import { callApi, formDataOf } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, Field, inputClass, panelClass, selectClass } from "@/shared/components/controls";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -128,7 +129,7 @@ export function EmployeeBoard({
           <h1 className="text-2xl font-semibold text-ink">Nhân viên</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">{countLabel}. Bấm tên để xem hồ sơ. Phòng ban và chức vụ gắn ngay trong sheet.</p>
         </div>
-        <button type="button" className={buttonPrimary} onClick={() => openMode("them")}>Thêm nhân viên</button>
+        <button type="button" className={buttonPrimary} onClick={() => openMode("them")}><Plus className="size-4" aria-hidden /> Thêm nhân viên</button>
       </div>
       <form className="flex flex-wrap gap-2" action="/nhan-vien">
         <input name="q" defaultValue={q} placeholder="Tên, điện thoại, email" className={`${inputClass} max-w-sm`} />
@@ -144,7 +145,7 @@ export function EmployeeBoard({
           <option value="dang_lam">Đang làm</option>
           <option value="ngung">Ngừng làm</option>
         </select>
-        <button className={buttonPrimary}>Lọc</button>
+        <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
       </form>
       <div className={panelClass}>
         <Table>
@@ -181,9 +182,9 @@ export function EmployeeBoard({
                 <TableCell className="text-muted">{row.positionName || "—"}</TableCell>
                 <TableCell className="text-muted">{row.phone || "—"}</TableCell>
                 <TableCell className="text-right">
-                  <Button type="button" size="sm" variant="outline" onClick={() => openMode("sua", row.id)}>
-                    <Pencil /> Sửa
-                  </Button>
+                  <ActionBadge onClick={() => openMode("sua", row.id)}>
+                    <Pencil className="size-3.5" aria-hidden /> Sửa
+                  </ActionBadge>
                 </TableCell>
               </TableRow>
             ))}
@@ -250,7 +251,7 @@ function SheetWait({ error, onClose }: { error: string; onClose: () => void }) {
         {error ? <p className="text-sm text-danger" role="alert">{error}</p> : <p className="text-sm text-muted">Đang tải hồ sơ...</p>}
       </div>
       <SheetFooter className="flex justify-end bg-white">
-        <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
+        <Button type="button" variant="outline" onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
       </SheetFooter>
     </div>
   );
@@ -336,8 +337,8 @@ function EmployeeForm({
       </div>
       {error ? <p className="px-5 pb-2 text-sm text-danger" role="alert">{error}</p> : null}
       <SheetFooter className="flex justify-end gap-2 bg-white">
-        <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Đóng</Button>
-        <Button type="submit" disabled={busy}>{busy ? "Đang lưu" : "Lưu"}</Button>
+        <Button type="button" variant="outline" disabled={busy} onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
+        <Button type="submit" disabled={busy}><Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu"}</Button>
       </SheetFooter>
     </form>
   );
@@ -435,8 +436,8 @@ function EmployeeView({
             {row.active ? "Ngừng làm việc" : "Cho làm lại"}
           </Button>
         ) : null}
-        <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
-        {row ? <Button type="button" onClick={onEdit}>Sửa</Button> : null}
+        <Button type="button" variant="outline" onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
+        {row ? <Button type="button" onClick={onEdit}><Pencil className="size-4" aria-hidden /> Sửa</Button> : null}
       </SheetFooter>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/cn";
@@ -324,7 +324,7 @@ function ProgressForm({
       ) : null}
       {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
       <div className="sticky bottom-3 z-10 grid grid-cols-[auto_1fr] gap-2 bg-page/95 py-1">
-        <Button type="button" variant="outline" className="h-12 rounded-2xl px-5" disabled={busy} onClick={onBack}>Đóng</Button>
+        <Button type="button" variant="outline" className="h-12 rounded-2xl px-5" disabled={busy} onClick={onBack}><X className="size-4" aria-hidden /> Đóng</Button>
         <Button type="button" className="h-12 rounded-2xl text-base" disabled={busy || !projectId} onClick={() => void submit()}>{busy ? "Đang gửi" : "Gửi báo cáo"}</Button>
       </div>
     </div>

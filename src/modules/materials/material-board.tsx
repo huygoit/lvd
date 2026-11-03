@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { Filter, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, inputClass, panelClass, selectClass } from "@/shared/components/controls";
 import {
   AlertDialog,
@@ -115,7 +116,7 @@ export function MaterialBoard({
           <h1 className="text-2xl font-semibold text-ink">Danh mục vật tư</h1>
           <p className="mt-1 text-sm text-muted">{total} mã. Giá trên danh sách là giá tham chiếu.</p>
         </div>
-        {canCreate ? <Button type="button" onClick={() => open("them")}>Thêm vật tư</Button> : null}
+        {canCreate ? <Button type="button" onClick={() => open("them")}><Plus className="size-4" aria-hidden /> Thêm vật tư</Button> : null}
       </div>
       <form className="flex flex-wrap gap-2" action="/vat-tu">
         <input name="q" defaultValue={q} placeholder="Mã, tên, màu" className={`${inputClass} max-w-sm`} />
@@ -135,7 +136,7 @@ export function MaterialBoard({
             return <option key={item.id} value={item.id}>{name ? `${item.code} · ${name}` : item.code}</option>;
           })}
         </select>
-        <button className={buttonPrimary}>Lọc</button>
+        <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
       </form>
       <div className={panelClass}>
         <Table>
@@ -172,9 +173,17 @@ export function MaterialBoard({
                 <TableCell>{formatTax(row.taxBps)}</TableCell>
                 <TableCell className="text-right">{formatReferencePrice(row.referencePrice)}</TableCell>
                 <TableCell>
-                  <div className="flex gap-1">
-                    {canUpdate ? <Button type="button" size="sm" variant="outline" onClick={() => open("sua", row.id)}><Pencil /> Sửa</Button> : null}
-                    {canUpdate ? <Button type="button" size="sm" variant="outline" onClick={() => { setDeleteError(""); setPendingDelete(row); }}><Trash2 /> Xóa</Button> : null}
+                  <div className="flex flex-wrap gap-1.5">
+                    {canUpdate ? (
+                      <ActionBadge onClick={() => open("sua", row.id)}>
+                        <Pencil className="size-3.5" aria-hidden /> Sửa
+                      </ActionBadge>
+                    ) : null}
+                    {canUpdate ? (
+                      <ActionBadge tone="danger" onClick={() => { setDeleteError(""); setPendingDelete(row); }}>
+                        <Trash2 className="size-3.5" aria-hidden /> Xóa
+                      </ActionBadge>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>
@@ -215,8 +224,8 @@ export function MaterialBoard({
           </AlertDialogHeader>
           {deleteError ? <p className="text-sm text-danger">{deleteError}</p> : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Hủy</AlertDialogCancel>
-            <Button type="button" variant="destructive" disabled={deleting} onClick={confirmDelete}>{deleting ? "Đang xóa" : "Xóa"}</Button>
+            <AlertDialogCancel disabled={deleting}><X className="size-4" aria-hidden /> Hủy</AlertDialogCancel>
+            <Button type="button" variant="destructive" disabled={deleting} onClick={confirmDelete}><Trash2 className="size-4" aria-hidden /> {deleting ? "Đang xóa" : "Xóa"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -257,9 +266,17 @@ function MaterialDetail({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        <div className="mb-4 flex flex-wrap gap-2">
-          {canUpdate ? <Button type="button" size="sm" variant="outline" onClick={onEdit}><Pencil /> Sửa</Button> : null}
-          {canUpdate ? <Button type="button" size="sm" variant="outline" onClick={onDelete}><Trash2 /> Xóa</Button> : null}
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {canUpdate ? (
+            <ActionBadge onClick={onEdit}>
+              <Pencil className="size-3.5" aria-hidden /> Sửa
+            </ActionBadge>
+          ) : null}
+          {canUpdate ? (
+            <ActionBadge tone="danger" onClick={onDelete}>
+              <Trash2 className="size-3.5" aria-hidden /> Xóa
+            </ActionBadge>
+          ) : null}
         </div>
         <dl className="grid gap-3 sm:grid-cols-2">
           {lines.map(([label, value]) => (
@@ -271,7 +288,7 @@ function MaterialDetail({
         </dl>
       </div>
       <div className="sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-line bg-white px-5 py-3">
-        <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
+        <Button type="button" variant="outline" onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
       </div>
     </div>
   );

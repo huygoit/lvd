@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Banknote, Pencil, PiggyBank, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
+import { Banknote, FileText, Pencil, PiggyBank, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
 import { callApi } from "@/shared/client/api";
-import { Button } from "@/shared/components/ui/button";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { cn } from "@/shared/lib/cn";
 import { formatCount, formatVnd } from "@/shared/lib/money";
 import { ProjectProgress } from "@/modules/projects/project-progress";
@@ -160,9 +160,17 @@ export function ProjectFinanceOverview({
           <p className="mt-3 text-sm text-muted">{GHI_CHU_GIA_TRI}</p>
         </div>
         <div className="flex w-full max-w-xs flex-col gap-4 sm:w-auto sm:items-end">
-          <div className="flex flex-wrap gap-2 sm:justify-end">
-            {canQuote ? <Button type="button" size="sm" variant="outline" onClick={onQuote}>Lập báo giá</Button> : null}
-            {canEdit ? <Button type="button" size="sm" variant="outline" onClick={onEdit}><Pencil /> Sửa</Button> : null}
+          <div className="flex flex-wrap gap-1.5 sm:justify-end">
+            {canQuote ? (
+              <ActionBadge tone="primary" onClick={onQuote}>
+                <FileText className="size-3.5" aria-hidden /> Lập báo giá
+              </ActionBadge>
+            ) : null}
+            {canEdit ? (
+              <ActionBadge onClick={onEdit}>
+                <Pencil className="size-3.5" aria-hidden /> Sửa
+              </ActionBadge>
+            ) : null}
           </div>
           <ProjectProgress stage={project.stage} />
         </div>

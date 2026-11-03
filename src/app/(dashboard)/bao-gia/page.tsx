@@ -1,3 +1,4 @@
+import { FileText, Filter } from "lucide-react";
 import { Suspense, type ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -149,7 +150,11 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
           <h1 className="text-2xl font-semibold">Báo giá</h1>
           <p className="mt-1 text-sm text-muted">Danh sách theo phiên bản mới nhất. Sửa mở ngay tại đây, chân màn hình giữ nút lưu.</p>
         </div>
-        {hasCapability(user, "quotations.create") ? <Link href="/bao-gia/moi" className={buttonPrimary}>Lập báo giá</Link> : null}
+        {hasCapability(user, "quotations.create") ? (
+          <Link href="/bao-gia/moi" className={buttonPrimary}>
+            <FileText className="size-4" aria-hidden /> Lập báo giá
+          </Link>
+        ) : null}
       </div>
       <form className="flex flex-wrap gap-2" action="/bao-gia">
         <input name="q" defaultValue={one(query.q)} placeholder="Mã, khách, công trình" className={`${inputClass} max-w-sm`} />
@@ -161,7 +166,7 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
           <option value="">Mọi phản hồi khách</option>
           {Object.entries(customerFollowLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        <button className={buttonPrimary}>Lọc</button>
+        <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
       </form>
       <div className={panelClass}>
         {rows.length === 0 ? <p className="p-4 text-sm text-muted">Chưa có báo giá.</p> : (

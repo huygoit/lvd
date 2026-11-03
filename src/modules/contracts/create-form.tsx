@@ -1,5 +1,7 @@
 "use client";
 
+import { Save } from "lucide-react";
+
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { callApi, formDataOf } from "@/shared/client/api";
@@ -70,7 +72,7 @@ export function ContractCreateForm({
         </>
       )}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      <button className={buttonPrimary} disabled={busy}>{busy ? "Đang lưu" : "Lưu nháp"}</button>
+      <button className={buttonPrimary} disabled={busy}><Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu nháp"}</button>
     </form>
   );
 }

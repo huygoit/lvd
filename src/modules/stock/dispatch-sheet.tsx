@@ -1,5 +1,7 @@
 "use client";
 
+import { X } from "lucide-react";
+
 import { useEffect, useState } from "react";
 import { callApi } from "@/shared/client/api";
 import { Button } from "@/shared/components/ui/button";
@@ -132,7 +134,7 @@ export function DispatchSheet({
           </div>
         </div>
         <SheetFooter className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
+          <Button type="button" variant="outline" onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
           <Button type="button" disabled={busy || !projectId || lines.length === 0} onClick={() => void send()}>{busy ? "Đang giao" : "Giao đến công trình"}</Button>
         </SheetFooter>
       </SheetContent>

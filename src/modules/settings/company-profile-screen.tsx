@@ -2,8 +2,9 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { BadgeCheck, Building2, FileText, Mail, MapPin, Phone, Trash2, Upload } from "lucide-react";
+import { BadgeCheck, Building2, FileText, Mail, MapPin, Phone, Plus, Save, Trash2, Upload } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { Button } from "@/shared/components/ui/button";
 import { routes } from "@/shared/config/routes";
 import { cn } from "@/shared/lib/cn";
@@ -203,7 +204,7 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href={routes.settings} className="text-sm font-medium text-primary">← Cài đặt</Link>
-        <Button type="button" disabled={dangLuu} onClick={() => void luu()}>{dangLuu ? "Đang lưu" : "Lưu hồ sơ"}</Button>
+        <Button type="button" disabled={dangLuu} onClick={() => void luu()}><Save className="size-4" aria-hidden /> {dangLuu ? "Đang lưu" : "Lưu hồ sơ"}</Button>
       </div>
       {loi ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loi}</p> : null}
       {bao ? <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success" role="status">{bao}</p> : null}
@@ -304,7 +305,7 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-ink">Tài khoản nhận tiền</p>
-                <Button type="button" size="sm" variant="outline" onClick={() => setBanks((current) => [...current, { key: `moi-${Date.now()}`, id: "", bankName: "", branch: "", accountNumber: "", accountName: "" }])}>Thêm</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setBanks((current) => [...current, { key: `moi-${Date.now()}`, id: "", bankName: "", branch: "", accountNumber: "", accountName: "" }])}><Plus className="size-4" aria-hidden /> Thêm</Button>
               </div>
               {banks.length === 0 ? <p className="text-sm text-muted">Chưa có tài khoản. Hãy ghi số thật của công ty, không dùng số mẫu.</p> : null}
               <div className="space-y-2">
@@ -340,7 +341,7 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
             </label>
           </div>
           {files.length === 0 ? <p className="rounded-xl bg-soft px-3 py-6 text-center text-sm text-muted">Chưa có hồ sơ năng lực.</p> : null}
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+          <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
             {files.map((item) => (
               <li key={item.id} className="flex items-center gap-3 bg-white px-3 py-2">
                 <FileText className="size-4 shrink-0 text-primary" />
@@ -349,7 +350,9 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
                   <p className="text-xs text-muted">{item.nhan} · {dungLuong(item.size)}</p>
                 </div>
                 <a className="text-sm font-medium text-primary" href={`/api/cai-dat/ho-so-cong-ty/nang-luc/${item.id}`}>Tải về</a>
-                <Button type="button" size="sm" variant="ghost" className="text-danger" onClick={() => void xoaTep(item.id)}>Xóa</Button>
+                <ActionBadge tone="danger" onClick={() => void xoaTep(item.id)}>
+                  <Trash2 className="size-3.5" aria-hidden /> Xóa
+                </ActionBadge>
               </li>
             ))}
           </ul>

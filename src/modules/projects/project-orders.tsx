@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AppWindow, Boxes, Check, CircleHelp, Download, FileText, FileUp, FolderOpen, Percent, Plus, Ruler, Save, Trash2, Wallet } from "lucide-react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { AppWindow, Boxes, Check, ChevronDown, CircleHelp, Download, FileUp, FolderOpen, History, Images, Percent, Plus, Ruler, Save, Trash2, Truck, Wallet, X } from "lucide-react";
+import { ActionBadge } from "@/shared/components/action-badge";
+import { ChungTuSlide, type ChungTuAnh } from "@/shared/components/chung-tu-slide";
 import { Button } from "@/shared/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/shared/components/ui/sheet";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
+import { formatStockQty } from "@/shared/catalog/stock";
 import { measureUnits } from "@/shared/catalog/units";
 import { ProjectShip } from "@/modules/projects/project-ship";
 import { callApi } from "@/shared/client/api";
 import { formatUnitPrice } from "@/modules/projects/item-fields";
 import { cn } from "@/shared/lib/cn";
+import { formatCount } from "@/shared/lib/money";
 
 type Line = {
   id: string;
@@ -95,6 +99,67 @@ type RawSurcharge = {
   unitPrice: number;
   vatPercent: number;
 };
+
+// Dòng VT trong một đợt giao (sheet lịch sử).
+type OrderDeliveryLine = {
+  id: string;
+  code: string;
+  name: string;
+  groupName: string;
+  unit: string;
+  lengthMm: number;
+  documentQty: number;
+  receivedQty: number;
+  amount: number;
+};
+
+type OrderDelivery = {
+  id: string;
+  code: string;
+  status: string;
+  statusLabel: string;
+  orderCode: string;
+  occurredAt: string;
+  createdAt: string;
+  postedAt: string;
+  expectedAt: string;
+  destinationLabel: string;
+  shipperName: string;
+  receiverName: string;
+  supplierName: string;
+  lineCount: number;
+  amount: number;
+  photos: ChungTuAnh[];
+  lines: OrderDeliveryLine[];
+};
+
+// Viewer slide chứng từ ảnh nhận hàng.
+type XemChungTu = {
+  code: string;
+  photos: ChungTuAnh[];
+  index: number;
+};
+
+type OrderDeliveryHistory = {
+  orderId: string;
+  orderCode: string;
+  projectName: string;
+  deliveries: OrderDelivery[];
+};
+
+function gioLichSu(iso: string) {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+}
 
 const stages = [
   { id: "tai", label: "Đang tải tệp", pct: 20 },
@@ -488,6 +553,13 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
   const [pendingDelete, setPendingDelete] = useState<Order | null>(null);
   const [toast, setToast] = useState("");
   const [pendingShip, setPendingShip] = useState<Order | null>(null);
+  // Sheet lịch sử giao hàng theo đơn.
+  const [lichSuDon, setLichSuDon] = useState<Order | null>(null);
+  const [lichSu, setLichSu] = useState<OrderDeliveryHistory | null>(null);
+  const [lichSuLoi, setLichSuLoi] = useState("");
+  const [lichSuDangTai, setLichSuDangTai] = useState(false);
+  const [phieuMoId, setPhieuMoId] = useState("");
+  const [xemChungTu, setXemChungTu] = useState<XemChungTu | null>(null);
   // Hộp chọn loại khi thêm đơn tay.
   const [chonLoai, setChonLoai] = useState(false);
   const [taoTay, setTaoTay] = useState(false);
@@ -503,6 +575,8 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
   const [vatChung, setVatChung] = useState("0");
   const henTat = useRef<number | null>(null);
   const vungCuon = useRef<HTMLDivElement | null>(null);
+  // Input ẩn — nút Nạp đơn là Button primary thật (cùng style Thêm hạng mục mới).
+  const tepDonRef = useRef<HTMLInputElement | null>(null);
 
   function moDon(order: Order, lines: Line[], surcharges: Surcharge[] = []) {
     let vat = vatChungTuDong(lines);
@@ -606,6 +680,20 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
 
   function load() {
     return callApi<Order[]>(`/api/cong-trinh/${projectId}/don-hang`).then(setOrders);
+  }
+
+  // Mở sheet lịch sử giao của một đơn; tải danh sách đợt từ API.
+  function moLichSuGiao(order: Order) {
+    setLichSuDon(order);
+    setLichSu(null);
+    setLichSuLoi("");
+    setPhieuMoId("");
+    setXemChungTu(null);
+    setLichSuDangTai(true);
+    callApi<OrderDeliveryHistory>(`/api/cong-trinh/${projectId}/don-hang/${order.id}/lich-su-giao`)
+      .then((data) => setLichSu(data))
+      .catch((caught: unknown) => setLichSuLoi(caught instanceof Error ? caught.message : "Không tải được lịch sử giao hàng."))
+      .finally(() => setLichSuDangTai(false));
   }
 
   useEffect(() => {
@@ -854,10 +942,6 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                     <SheetTitle>{current.code} · {current.kindLabel}</SheetTitle>
                     <SheetDescription asChild>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-line bg-soft px-3 text-xs font-medium text-ink">
-                          <FileText className="size-3.5 shrink-0 text-primary" aria-hidden />
-                          <span className="truncate">{current.fileName || "Nhập tay"}</span>
-                        </span>
                         {current.status === "da_luu" ? null : (
                           <span className="inline-flex h-7 items-center rounded-full border border-line bg-white px-3 text-xs font-medium text-muted">{current.statusLabel}</span>
                         )}
@@ -977,8 +1061,8 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                   <>
                     <th className={tieuDe}>Ký hiệu</th>
                     <th className={tieuDe}>Loại kính</th>
-                    <th className={tieuDeSo}>Rộng</th>
-                    <th className={tieuDeSo}>Cao</th>
+                    <th className={tieuDeSo}>Rộng (mm)</th>
+                    <th className={tieuDeSo}>Cao (mm)</th>
                     <th className={tieuDeSo}>Số tấm</th>
                     <th className={tieuDeSo}>m²</th>
                     <th className={tieuDeSo}>Đơn giá</th>
@@ -1037,7 +1121,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                   <td className={o}><input value={line.colorCode} onChange={(event) => patch(index, { colorCode: event.target.value })} className={cell} /></td>
                   <td className={o}><input value={line.spec} onChange={(event) => patch(index, { spec: event.target.value })} className={cell} /></td>
                   <td className={o}><span className={cn(chu, "font-semibold")}>{nhanNguon(line.nguon)}</span></td>
-                  {canEdit ? <td className={o}><button type="button" onClick={() => xoaDong(index)} className="flex h-9 items-center px-2 text-xs font-semibold text-danger hover:bg-danger/10">Xóa</button></td> : null}
+                  {canEdit ? <td className={o}><button type="button" onClick={() => xoaDong(index)} className="flex h-9 items-center px-2 text-xs font-semibold text-danger hover:bg-danger/10"><Trash2 className="size-4" aria-hidden /> Xóa</button></td> : null}
                 </tr>
               ) : (
                 <tr key={line.id || index} className="border-b border-line last:border-0">
@@ -1082,7 +1166,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                   </td>
                   <td className={o}><span className={chuPhai}>{hienTien(tienThueDong(current.kind, line, donGomVat(current)))}</span></td>
                   <td className={o}><span className={cn(chu, "font-semibold")}>{nhanNguon(line.nguon)}</span></td>
-                  {canEdit ? <td className={o}><button type="button" onClick={() => xoaDong(index)} className="flex h-9 items-center px-2 text-xs font-semibold text-danger hover:bg-danger/10">Xóa</button></td> : null}
+                  {canEdit ? <td className={o}><button type="button" onClick={() => xoaDong(index)} className="flex h-9 items-center px-2 text-xs font-semibold text-danger hover:bg-danger/10"><Trash2 className="size-4" aria-hidden /> Xóa</button></td> : null}
                 </tr>
               ))}
             </tbody>
@@ -1127,7 +1211,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                     </select>
                   </td>
                   <td className={o}><span className={chuPhai}>{hienTien(tienPhuThuThue(row, donGomVat(current)))}</span></td>
-                  {canEdit ? <td className={o}><button type="button" onClick={() => xoaPhuThu(index)} className="flex h-9 items-center px-2 text-xs font-semibold text-danger hover:bg-danger/10">Xóa</button></td> : null}
+                  {canEdit ? <td className={o}><button type="button" onClick={() => xoaPhuThu(index)} className="flex h-9 items-center px-2 text-xs font-semibold text-danger hover:bg-danger/10"><Trash2 className="size-4" aria-hidden /> Xóa</button></td> : null}
                 </tr>
               ))}
             </tbody>
@@ -1181,15 +1265,24 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
           </div>
           {canEdit ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" className="h-10 gap-1.5 rounded-xl" disabled={taoTay} onClick={() => setChonLoai(true)}>
+              <Button type="button" variant="outline" disabled={taoTay} onClick={() => setChonLoai(true)}>
                 <Plus className="size-4" aria-hidden />
                 {taoTay ? "Đang tạo..." : "Thêm đơn đặt hàng"}
               </Button>
-              <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white">
+              <input
+                ref={tepDonRef}
+                type="file"
+                accept="application/pdf"
+                className="sr-only"
+                onChange={(event) => {
+                  void onFile(event.target.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <Button type="button" onClick={() => tepDonRef.current?.click()}>
                 <FolderOpen className="size-4" aria-hidden />
                 Nạp đơn đặt hàng từ file
-                <input type="file" accept="application/pdf" className="sr-only" onChange={(event) => { void onFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-              </label>
+              </Button>
             </div>
           ) : null}
         </div>
@@ -1227,8 +1320,9 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
         {orders?.map((order) => {
           const item = kindMeta[order.kind];
           const Icon = item.icon;
+          const duocGiao = order.status === "da_luu" && order.canShip;
           return (
-            <div key={order.id} className="flex items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3">
+            <div key={order.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-line bg-white px-4 py-3 sm:flex-nowrap">
               <button
                 type="button"
                 onClick={() => moDonHoacHoiVat(
@@ -1236,39 +1330,48 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                   order.lines as unknown as RawLine[],
                   (order.surcharges ?? []) as unknown as RawSurcharge[],
                 )}
-                className="flex min-w-0 flex-1 items-center gap-4 text-left"
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
               >
-                <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-2xl", item.tone)}><Icon className="size-5" /></span>
+                <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", item.tone)}><Icon className="size-4" /></span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-ink">{order.code} · {order.supplierName || "Chưa rõ nhà cung cấp"}</span>
                   <span className="text-xs text-muted">{order.kindLabel} · {order.lines.length} dòng · {order.createdOn}</span>
                 </span>
               </button>
-              <span className="w-36 shrink-0 text-right text-sm font-semibold tabular-nums text-ink">{order.amount > 0 ? `${formatUnitPrice(order.amount)} ₫` : "—"}</span>
-              <span className="flex w-36 shrink-0 justify-center">
-                {canHoiVat(order) ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Chưa xác nhận VAT</span> : null}
-                {!canHoiVat(order) && order.delivery === "cho_nhan" ? <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">Đang giao</span> : null}
-                {!canHoiVat(order) && order.delivery === "da_nhan" ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">Đã nhận</span> : null}
-                {!canHoiVat(order) && order.status !== "da_luu" ? <span className="rounded-full bg-soft px-2.5 py-1 text-xs font-medium text-ink">{order.statusLabel}</span> : null}
+              <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-ink sm:w-32">{order.amount > 0 ? `${formatUnitPrice(order.amount)} ₫` : "—"}</span>
+              <span className="flex shrink-0 justify-center sm:w-32">
+                {canHoiVat(order) ? <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800">Chưa xác nhận VAT</span> : null}
+                {!canHoiVat(order) && order.delivery === "cho_nhan" ? <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">Đang giao</span> : null}
+                {!canHoiVat(order) && order.delivery === "da_nhan" ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800">Đã nhận</span> : null}
+                {!canHoiVat(order) && order.status !== "da_luu" ? <span className="rounded-full bg-soft px-2.5 py-0.5 text-[11px] font-medium text-ink">{order.statusLabel}</span> : null}
               </span>
-              <span className="flex w-64 shrink-0 justify-end gap-2">
-                <span title={order.fileName ? "Tải tệp đơn hàng" : "Đơn chưa có tệp"} className={order.fileName ? "" : "cursor-not-allowed"}>
-                  <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={!order.fileName} onClick={() => void taiTep(order.id, order.fileName)}>
-                    <Download className="size-4" />
-                    Tải về
-                  </Button>
-                </span>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:ml-auto">
+                <ActionBadge title="Xem các đợt giao hàng của đơn" onClick={() => moLichSuGiao(order)}>
+                  <History className="size-4" aria-hidden />
+                  Lịch sử giao hàng
+                </ActionBadge>
+                <ActionBadge title={order.fileName ? "Tải tệp đơn hàng" : "Đơn chưa có tệp"} disabled={!order.fileName} onClick={() => void taiTep(order.id, order.fileName)}>
+                  <Download className="size-4" aria-hidden />
+                  Tải về
+                </ActionBadge>
                 {canEdit ? (
-                  <span title={order.status !== "da_luu" ? "Lưu đơn trước khi giao" : order.canShip ? "Giao phần còn lại" : "Đơn đã giao hết"} className={order.status === "da_luu" && order.canShip ? "" : "cursor-not-allowed"}>
-                    <Button type="button" variant="outline" size="sm" disabled={order.status !== "da_luu" || !order.canShip} onClick={() => { setError(""); setPendingShip(order); }}>Giao hàng</Button>
-                  </span>
+                  <>
+                    <ActionBadge
+                      tone="primary"
+                      title={order.status !== "da_luu" ? "Lưu đơn trước khi giao" : order.canShip ? "Giao phần còn lại" : "Đơn đã giao hết"}
+                      disabled={!duocGiao}
+                      onClick={() => { setError(""); setPendingShip(order); }}
+                    >
+                      <Truck className="size-4" aria-hidden />
+                      Giao hàng
+                    </ActionBadge>
+                    <ActionBadge tone="danger" title={order.shipped ? "Đơn đã giao, không xóa được" : "Xóa đơn hàng"} disabled={order.shipped} onClick={() => setPendingDelete(order)}>
+                      <Trash2 className="size-4" aria-hidden />
+                      Xóa
+                    </ActionBadge>
+                  </>
                 ) : null}
-                {canEdit ? (
-                  <span title={order.shipped ? "Đơn đã giao, không xóa được" : "Xóa đơn hàng"} className={order.shipped ? "cursor-not-allowed" : ""}>
-                    <Button type="button" variant="outline" size="sm" className="text-danger" disabled={order.shipped} onClick={() => setPendingDelete(order)}>Xóa</Button>
-                  </span>
-                ) : null}
-              </span>
+              </div>
             </div>
           );
         })}
@@ -1280,6 +1383,227 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
         onClose={() => setPendingShip(null)}
         onDone={(message) => { setPendingShip(null); void load(); bao(message); }}
       />
+      <Sheet
+        open={lichSuDon !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLichSuDon(null);
+            setLichSu(null);
+            setLichSuLoi("");
+            setPhieuMoId("");
+            setXemChungTu(null);
+          }
+        }}
+      >
+        <SheetContent className="flex w-full flex-col gap-0 p-0 sm:w-[75vw] sm:max-w-[75vw]">
+          <div className="border-b border-line bg-[linear-gradient(135deg,#f8fafc_0%,#f0fdfa_55%,#ecfeff_100%)] px-5 pb-4 pt-5">
+            <SheetHeader className="space-y-1 p-0">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
+                  <Truck className="size-5" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <SheetTitle className="text-base font-semibold text-ink">Lịch sử giao hàng</SheetTitle>
+                  <SheetDescription className="text-sm text-muted">
+                    {lichSuDon ? `${lichSuDon.code} · ${lichSuDon.supplierName || "Chưa rõ nhà cung cấp"}` : "Các đợt giao của đơn"}
+                  </SheetDescription>
+                </div>
+              </div>
+            </SheetHeader>
+            {lichSu && lichSu.deliveries.length > 0 ? (
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-line/80 bg-white/80 px-3 py-2.5 shadow-sm backdrop-blur">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Số đợt giao</p>
+                  <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">{lichSu.deliveries.length}</p>
+                </div>
+                <div className="rounded-xl border border-line/80 bg-white/80 px-3 py-2.5 shadow-sm backdrop-blur">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Đã nhận</p>
+                  <p className="mt-0.5 text-lg font-semibold tabular-nums text-emerald-700">
+                    {lichSu.deliveries.filter((item) => item.status === "da_nhan").length}
+                  </p>
+                </div>
+                <div className="col-span-2 rounded-xl border border-line/80 bg-white/80 px-3 py-2.5 shadow-sm backdrop-blur sm:col-span-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Tổng giá trị giao</p>
+                  <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">
+                    {formatCount(lichSu.deliveries.reduce((tong, item) => tong + item.amount, 0))} ₫
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {lichSuDangTai ? (
+              <div className="flex h-40 items-center justify-center rounded-2xl border border-dashed border-line bg-soft/40">
+                <p className="text-sm text-muted">Đang tải lịch sử giao hàng...</p>
+              </div>
+            ) : null}
+            {lichSuLoi ? <p className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{lichSuLoi}</p> : null}
+            {!lichSuDangTai && !lichSuLoi && lichSu && lichSu.deliveries.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-line bg-soft/50 px-4 py-12 text-center">
+                <Truck className="mx-auto size-9 text-muted/40" aria-hidden />
+                <p className="mt-3 text-sm font-medium text-ink">Đơn chưa có đợt giao hàng</p>
+                <p className="mt-1 text-xs text-muted">Khi bấm «Giao hàng» và tạo phiếu, lịch sử sẽ hiện tại đây.</p>
+              </div>
+            ) : null}
+            {!lichSuDangTai && lichSu && lichSu.deliveries.length > 0 ? (
+              <div className="overflow-hidden rounded-2xl border border-line bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-line bg-soft/80 text-muted">
+                        <th className="h-11 px-3 text-left text-xs font-semibold uppercase tracking-wide">Mã giao hàng</th>
+                        <th className="h-11 px-3 text-left text-xs font-semibold uppercase tracking-wide">Đơn đặt hàng</th>
+                        <th className="h-11 px-3 text-left text-xs font-semibold uppercase tracking-wide">Người giao</th>
+                        <th className="h-11 min-w-[10rem] max-w-[14rem] px-3 text-left text-xs font-semibold uppercase tracking-wide">Nơi đến</th>
+                        <th className="h-11 px-3 text-left text-xs font-semibold uppercase tracking-wide">Người nhận</th>
+                        <th className="h-11 px-3 text-left text-xs font-semibold uppercase tracking-wide">Thời gian</th>
+                        <th className="h-11 px-3 text-right text-xs font-semibold uppercase tracking-wide">Tổng giá trị</th>
+                        <th className="h-11 px-3 text-center text-xs font-semibold uppercase tracking-wide">Chứng từ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lichSu.deliveries.map((phieu) => {
+                        const moLuoi = phieuMoId === phieu.id;
+                        const nguoiNhan = phieu.receiverName || (phieu.status === "cho_nhan" ? "Chưa nhận" : "—");
+                        const anh = phieu.photos ?? [];
+                        return (
+                          <Fragment key={phieu.id}>
+                            <tr
+                              className={cn(
+                                "cursor-pointer border-b border-line transition-colors",
+                                moLuoi ? "bg-primary/[0.04]" : "bg-white hover:bg-soft/70",
+                              )}
+                              onClick={() => setPhieuMoId(moLuoi ? "" : phieu.id)}
+                              aria-expanded={moLuoi}
+                            >
+                              <td className="px-3 py-3 align-middle">
+                                <div className="space-y-1.5">
+                                  <span className="block font-semibold tabular-nums text-ink">{phieu.code}</span>
+                                  {/* Mũi tên nằm trong badge trạng thái — không chiếm cột riêng. */}
+                                  <span
+                                    className={cn(
+                                      "inline-flex w-fit items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                                      phieu.status === "da_nhan" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800",
+                                    )}
+                                  >
+                                    {phieu.statusLabel}
+                                    <ChevronDown className={cn("size-3 opacity-70 transition", moLuoi && "rotate-180")} aria-hidden />
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 align-middle">
+                                <span className="inline-flex items-center rounded-lg border border-line bg-soft px-2.5 py-1 text-xs font-semibold tabular-nums text-ink">
+                                  {phieu.orderCode}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3 align-middle text-ink">{phieu.shipperName || "—"}</td>
+                              <td className="min-w-[10rem] max-w-[14rem] px-3 py-3 align-middle">
+                                <span className="block whitespace-normal break-words leading-5 text-ink">{phieu.destinationLabel}</span>
+                              </td>
+                              <td className="px-3 py-3 align-middle text-ink">{nguoiNhan}</td>
+                              <td className="px-3 py-3 align-middle tabular-nums text-muted">{gioLichSu(phieu.occurredAt)}</td>
+                              <td className="px-3 py-3 align-middle text-right font-semibold tabular-nums text-ink">{formatCount(phieu.amount)}</td>
+                              <td className="px-3 py-3 align-middle text-center" onClick={(event) => event.stopPropagation()}>
+                                {anh.length === 0 ? (
+                                  <span className="text-xs text-muted">—</span>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5"
+                                    onClick={() => setXemChungTu({ code: phieu.code, photos: anh, index: 0 })}
+                                  >
+                                    <Images className="size-3.5" aria-hidden />
+                                    Xem
+                                    <span className="tabular-nums text-muted">({anh.length})</span>
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                            {moLuoi ? (
+                              <tr className="border-b border-line bg-soft/50">
+                                <td colSpan={8} className="p-0">
+                                  <div className="border-t border-line/70 px-3 py-3">
+                                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">Chi tiết vật tư giao</p>
+                                      <p className="text-xs text-muted">{phieu.lineCount} dòng</p>
+                                    </div>
+                                    {phieu.lines.length === 0 ? (
+                                      <p className="rounded-xl border border-dashed border-line bg-white px-3 py-4 text-center text-sm text-muted">Phiếu không có dòng vật tư.</p>
+                                    ) : (
+                                      <div className="overflow-hidden rounded-xl border border-line bg-white">
+                                        <table className="w-full min-w-[700px] text-sm">
+                                          <thead>
+                                            <tr className="border-b border-line bg-soft text-muted">
+                                              <th className="h-9 px-2.5 text-left text-xs font-medium">Mã VT</th>
+                                              <th className="h-9 px-2.5 text-left text-xs font-medium">Vật tư</th>
+                                              <th className="h-9 px-2.5 text-left text-xs font-medium">Loại</th>
+                                              <th className="h-9 px-2.5 text-right text-xs font-medium tabular-nums">SL giao</th>
+                                              <th className="h-9 px-2.5 text-right text-xs font-medium tabular-nums">SL nhận</th>
+                                              <th className="h-9 px-2.5 text-left text-xs font-medium">ĐVT</th>
+                                              <th className="h-9 px-2.5 text-right text-xs font-medium tabular-nums">Thành tiền</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {phieu.lines.map((dong) => (
+                                              <tr key={dong.id} className="border-b border-line last:border-0">
+                                                <td className="px-2.5 py-2 align-top tabular-nums text-muted">{dong.code}</td>
+                                                <td className="px-2.5 py-2 align-top text-ink">
+                                                  <span className="font-medium">{dong.name}</span>
+                                                  {dong.lengthMm ? (
+                                                    <span className="mt-0.5 block text-xs text-muted">
+                                                      Dài {(Math.round(dong.lengthMm / 10) / 100).toString().replace(".", ",")} m
+                                                    </span>
+                                                  ) : null}
+                                                </td>
+                                                <td className="px-2.5 py-2 align-top text-muted">{dong.groupName || "—"}</td>
+                                                <td className="px-2.5 py-2 align-top text-right tabular-nums text-ink">{formatStockQty(dong.documentQty)}</td>
+                                                <td className="px-2.5 py-2 align-top text-right tabular-nums text-ink">
+                                                  {phieu.status === "da_nhan" ? formatStockQty(dong.receivedQty) : "—"}
+                                                </td>
+                                                <td className="px-2.5 py-2 align-top text-muted">{dong.unit}</td>
+                                                <td className="px-2.5 py-2 align-top text-right font-medium tabular-nums text-ink">{formatCount(dong.amount)}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
+      {/* Sheet riêng xem chứng từ — không nhét vào sheet lịch sử (tránh sheet nhảy). */}
+      <Sheet open={xemChungTu !== null} onOpenChange={(open) => { if (!open) setXemChungTu(null); }}>
+        <SheetContent className="z-[70] flex w-full flex-col gap-0 border-0 bg-slate-950 p-0 text-white sm:max-w-3xl">
+          {xemChungTu ? (
+            <ChungTuSlide
+              code={xemChungTu.code}
+              photos={xemChungTu.photos}
+              index={xemChungTu.index}
+              onIndex={(index) => setXemChungTu((hien) => (hien ? { ...hien, index } : hien))}
+              onStep={(delta) => setXemChungTu((hien) => {
+                if (!hien || hien.photos.length < 2) return hien;
+                const n = hien.photos.length;
+                return { ...hien, index: (hien.index + delta + n) % n };
+              })}
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
       <AlertDialog open={choVat !== null} onOpenChange={(open) => { if (!open && !dangXacNhanVat) dongPopupVat(); }}>
         <AlertDialogContent className="w-[min(100%-1.5rem,34rem)] overflow-hidden border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.22)]">
           {(() => {
@@ -1457,7 +1781,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
             })}
           </div>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setChonLoai(false)} disabled={taoTay}>Hủy</Button>
+            <Button type="button" variant="outline" onClick={() => setChonLoai(false)} disabled={taoTay}><X className="size-4" aria-hidden /> Hủy</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1480,11 +1804,12 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
             <AlertDialogDescription>Đơn {pendingDelete?.code} sẽ bị xóa. Vật tư và nhà cung cấp đã tạo trong danh mục vẫn giữ.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPendingDelete(null)}>Hủy</Button>
-            <Button type="button" onClick={() => void remove()} disabled={saving}>Xóa</Button>
+            <Button type="button" variant="outline" onClick={() => setPendingDelete(null)}><X className="size-4" aria-hidden /> Hủy</Button>
+            <Button type="button" onClick={() => void remove()} disabled={saving}><Trash2 className="size-4" aria-hidden /> Xóa</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
   );
 }
+

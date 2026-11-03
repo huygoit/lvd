@@ -1,5 +1,7 @@
 "use client";
 
+import { Plus, Save } from "lucide-react";
+
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { callApi, formDataOf } from "@/shared/client/api";
@@ -96,7 +98,7 @@ export function ContractBoard({
             <textarea name="paymentText" defaultValue={draft.paymentText} className={`${inputClass} h-20 py-2`} />
           </Field>
           <div className="sm:col-span-2">
-            <button className={buttonGhost} disabled={busy}>Lưu nháp</button>
+            <button className={buttonGhost} disabled={busy}><Save className="size-4" aria-hidden /> Lưu nháp</button>
           </div>
         </form>
       ) : null}
@@ -130,7 +132,7 @@ export function ContractBoard({
           <Field label="Kế hoạch">
             <NgayNhap name="planOn" className={inputClass} />
           </Field>
-          <button className={buttonGhost} disabled={busy}>Thêm mốc</button>
+          <button className={buttonGhost} disabled={busy}><Plus className="size-4" aria-hidden /> Thêm mốc</button>
         </form>
       ) : null}
       {canEdit && !frozen ? (
@@ -146,7 +148,7 @@ export function ContractBoard({
           <Field label="Số tiền">
             <input name="amount" className={inputClass} inputMode="numeric" />
           </Field>
-          <button className={buttonGhost} disabled={busy}>Thêm đợt</button>
+          <button className={buttonGhost} disabled={busy}><Plus className="size-4" aria-hidden /> Thêm đợt</button>
         </form>
       ) : null}
       {canEdit ? (

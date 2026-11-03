@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, Plus, Save, X } from "lucide-react";
 import type { Capability } from "@/shared/auth/types";
 import { isCapability, permissionGroups, permissionLabel } from "@/shared/auth/permissions";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, Field, inputClass, panelClass } from "@/shared/components/controls";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -100,7 +101,7 @@ export function RoleBoard({
           <h1 className="text-2xl font-semibold text-ink">Vai trò và quyền</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">Mỗi vai trò là một nhóm quyền. Tài khoản nhận quyền bằng cách được gán vào vai trò.</p>
         </div>
-        <button type="button" className={buttonPrimary} onClick={() => openMode("them")}>Thêm vai trò</button>
+        <button type="button" className={buttonPrimary} onClick={() => openMode("them")}><Plus className="size-4" aria-hidden /> Thêm vai trò</button>
       </div>
       <div className={panelClass}>
         <Table>
@@ -128,9 +129,9 @@ export function RoleBoard({
                 <TableCell className="text-muted">{row.capabilities.length}</TableCell>
                 <TableCell className="whitespace-normal text-muted">{row.userNames.join(", ") || "—"}</TableCell>
                 <TableCell className="text-right">
-                  <Button type="button" size="sm" variant="outline" onClick={() => openMode("sua", row.id)}>
-                    <Pencil /> Sửa
-                  </Button>
+                  <ActionBadge onClick={() => openMode("sua", row.id)}>
+                    <Pencil className="size-3.5" aria-hidden /> Sửa
+                  </ActionBadge>
                 </TableCell>
               </TableRow>
             ))}
@@ -179,7 +180,7 @@ function SheetWait({ error, onClose }: { error: string; onClose: () => void }) {
         {error ? <p className="text-sm text-danger" role="alert">{error}</p> : <p className="text-sm text-muted">Đang tải vai trò...</p>}
       </div>
       <SheetFooter className="flex justify-end bg-white">
-        <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
+        <Button type="button" variant="outline" onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
       </SheetFooter>
     </div>
   );
@@ -246,8 +247,8 @@ function RoleForm({
       </div>
       {error ? <p className="px-5 pb-2 text-sm text-danger" role="alert">{error}</p> : null}
       <SheetFooter className="flex justify-end gap-2 bg-white">
-        <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Đóng</Button>
-        <Button type="button" disabled={busy} onClick={() => void onSubmit()}>{busy ? "Đang lưu" : "Lưu"}</Button>
+        <Button type="button" variant="outline" disabled={busy} onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
+        <Button type="button" disabled={busy} onClick={() => void onSubmit()}><Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu"}</Button>
       </SheetFooter>
     </div>
   );
@@ -324,8 +325,8 @@ function RoleView({
             {row.active ? "Ngừng dùng" : "Dùng lại"}
           </Button>
         ) : null}
-        <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
-        {row ? <Button type="button" onClick={onEdit}>Sửa</Button> : null}
+        <Button type="button" variant="outline" onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
+        {row ? <Button type="button" onClick={onEdit}><Pencil className="size-4" aria-hidden /> Sửa</Button> : null}
       </SheetFooter>
     </div>
   );

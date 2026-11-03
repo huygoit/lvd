@@ -1,5 +1,7 @@
 "use client";
 
+import { Plus, Save, Trash2 } from "lucide-react";
+
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { callApi } from "@/shared/client/api";
@@ -76,7 +78,7 @@ export function PartnerContactPanel({
               <span className="mt-0.5 block text-muted">{[item.title, item.phone, item.email].filter(Boolean).join(" · ") || "Chưa có số"}</span>
             </span>
             <button type="button" className="text-sm font-semibold text-danger" onClick={() => remove(item.id)}>
-              Xóa
+              <Trash2 className="size-4" aria-hidden /> Xóa
             </button>
           </li>
         ))}
@@ -97,7 +99,7 @@ export function PartnerContactPanel({
           Đặt làm liên hệ chính
         </label>
         <button className={`${buttonPrimary} sm:w-fit`} disabled={busy}>
-          Thêm liên hệ
+          <Plus className="size-4" aria-hidden /> Thêm liên hệ
         </button>
       </form>
       {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
@@ -123,7 +125,7 @@ export function ArchivePartnerButton({ id, onDone }: { id: string; onDone?: () =
   return (
     <span>
       <button type="button" className={buttonGhost} onClick={archive}>
-        Lưu trữ
+        <Save className="size-4" aria-hidden /> Lưu trữ
       </button>
       {error ? <span className="ml-2 text-sm text-danger">{error}</span> : null}
     </span>

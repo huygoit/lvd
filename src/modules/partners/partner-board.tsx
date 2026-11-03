@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { Filter, Pencil, Plus, Trash2, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, inputClass, panelClass, selectClass } from "@/shared/components/controls";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -187,7 +188,7 @@ export function PartnerBoard({
           </p>
         </div>
         {canCreate ? (
-          <button type="button" className={buttonPrimary} onClick={() => openMode("them")}>Thêm đối tác</button>
+          <button type="button" className={buttonPrimary} onClick={() => openMode("them")}><Plus className="size-4" aria-hidden /> Thêm đối tác</button>
         ) : null}
       </div>
       <div className="flex flex-wrap gap-2">
@@ -220,7 +221,7 @@ export function PartnerBoard({
           <option value="dang_dung">Đang sử dụng</option>
           <option value="luu_tru">Đã lưu trữ</option>
         </select>
-        <button className={buttonPrimary}>Lọc</button>
+        <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
       </form>
       <div className={panelClass}>
         <Table>
@@ -265,25 +266,22 @@ export function PartnerBoard({
                 <TableCell className="text-muted">{row.taxCode || "—"}</TableCell>
                 <TableCell className="text-muted">{row.phone || "—"}</TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
+                  <div className="flex flex-wrap justify-end gap-1.5">
                     {canUpdate ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => openMode("sua", row.id)}>
-                        <Pencil /> Sửa
-                      </Button>
+                      <ActionBadge onClick={() => openMode("sua", row.id)}>
+                        <Pencil className="size-3.5" aria-hidden /> Sửa
+                      </ActionBadge>
                     ) : null}
                     {canDelete ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-danger hover:text-danger"
+                      <ActionBadge
+                        tone="danger"
                         onClick={() => {
                           setDeleteError("");
                           setPendingDelete(row);
                         }}
                       >
-                        <Trash2 /> Xóa
-                      </Button>
+                        <Trash2 className="size-3.5" aria-hidden /> Xóa
+                      </ActionBadge>
                     ) : null}
                   </div>
                 </TableCell>
@@ -330,7 +328,7 @@ export function PartnerBoard({
                 {loadError ? <p className="text-sm text-danger">{loadError}</p> : <p className="text-sm text-muted">Đang tải hồ sơ...</p>}
               </div>
               <div className="sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-line bg-white px-5 py-3">
-                <Button type="button" variant="outline" onClick={() => openMode(null)}>Đóng</Button>
+                <Button type="button" variant="outline" onClick={() => openMode(null)}><X className="size-4" aria-hidden /> Đóng</Button>
               </div>
             </div>
           ) : null}
@@ -375,18 +373,15 @@ export function PartnerBoard({
                       <Badge key={role} variant="secondary">{partnerRoleLabel[role]}</Badge>
                     ))}
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {canUpdate ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => openMode("sua", detail.id)}>
-                        <Pencil /> Sửa
-                      </Button>
+                      <ActionBadge onClick={() => openMode("sua", detail.id)}>
+                        <Pencil className="size-3.5" aria-hidden /> Sửa
+                      </ActionBadge>
                     ) : null}
                     {canDelete ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-danger hover:text-danger"
+                      <ActionBadge
+                        tone="danger"
                         onClick={() => {
                           setDeleteError("");
                           setPendingDelete({
@@ -402,8 +397,8 @@ export function PartnerBoard({
                           });
                         }}
                       >
-                        <Trash2 /> Xóa
-                      </Button>
+                        <Trash2 className="size-3.5" aria-hidden /> Xóa
+                      </ActionBadge>
                     ) : null}
                     {detail.status === "dang_dung" && canDelete ? (
                       <ArchivePartnerButton id={detail.id} onDone={() => setTick((value) => value + 1)} />
@@ -438,7 +433,7 @@ export function PartnerBoard({
               ) : null}
             </div>
             <div className="sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-line bg-white px-5 py-3">
-              <Button type="button" variant="outline" onClick={() => openMode(null)}>Đóng</Button>
+              <Button type="button" variant="outline" onClick={() => openMode(null)}><X className="size-4" aria-hidden /> Đóng</Button>
             </div>
             </div>
           ) : null}
@@ -455,9 +450,9 @@ export function PartnerBoard({
           </AlertDialogHeader>
           {deleteError ? <p className="mt-2 text-sm text-danger">{deleteError}</p> : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Hủy</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}><X className="size-4" aria-hidden /> Hủy</AlertDialogCancel>
             <Button type="button" variant="destructive" disabled={deleting} onClick={confirmDelete}>
-              {deleting ? "Đang xóa" : "Xóa"}
+              <Trash2 className="size-4" aria-hidden /> {deleting ? "Đang xóa" : "Xóa"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

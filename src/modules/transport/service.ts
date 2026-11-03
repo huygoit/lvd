@@ -19,6 +19,12 @@ import {
   thanhTienDong,
   type TransportStatus,
 } from "@/modules/transport/fields";
+import {
+  chuanHoaContractStatus,
+  contractStatusTinhChiPhi,
+  hopDongChoThanhToan,
+  hopDongDangKhoa,
+} from "@/shared/catalog/contract-status";
 
 function batXem(user: User) {
   if (!hasCapability(user, "transport.view") && !hasAnyCapability(user, ["projects.view", "projects.view.assigned", "projects.update", "projects.create"])) {
@@ -85,7 +91,7 @@ function present(row: {
   advances: { id: string; occurredOn: string; amount: number; payerId: string; note: string; createdAt: Date }[];
 }) {
   const tongHopDong = row.lines.reduce((tong, dong) => tong + dong.amount, 0);
-  const tongTamUng = row.advances.reduce((tong, dong) => tong + dong.amount, 0);
+  const tongDaThanhToan = row.advances.reduce((tong, dong) => tong + dong.amount, 0);
   return {
     id: row.id,
     code: row.code,
@@ -95,14 +101,14 @@ function present(row: {
     partnerName: row.partner.name,
     name: row.name,
     pricingKind: row.pricingKind,
-    status: row.status,
+    status: chuanHoaContractStatus(row.status),
     signedOn: row.signedOn,
     unitPrice: row.unitPrice,
     note: row.note,
     revision: row.revision,
     tongHopDong,
-    tongTamUng,
-    conLai: tongHopDong - tongTamUng,
+    tongDaThanhToan,
+    conLai: tongHopDong - tongDaThanhToan,
     lines: row.lines.map((dong) => ({
       id: dong.id,
       sortOrder: dong.sortOrder,
@@ -210,8 +216,8 @@ export async function createTransportContract(
     ? null
     : soNguyenKhongAm(input.unitPrice, "Đơn giá");
   const lines = cleanLines(input.lines ?? [], unitPrice, pricingKind);
-  const status = input.status === undefined ? (lines.length ? "da_luu" : "nhap") : parseStatus(input.status);
-  if (status !== "nhap" && status !== "da_luu") throw new AppError("Trạng thái tạo mới chỉ nhận nháp hoặc đã lưu.", 400);
+  const status = input.status === undefined ? (lines.length ? "dang_thuc_hien" : "nhap") : parseStatus(input.status);
+  if (hopDongDangKhoa(status)) throw new AppError("Không tạo hợp đồng ở trạng thái đã kết thúc/hủy.", 400);
   return prisma.$transaction(async (tx) => {
     const code = await nextCode(tx, "VC", new Date());
     const row = await tx.transportContract.create({
@@ -256,7 +262,7 @@ export async function updateTransportContract(
   const project = await moCongTrinh(user, projectId);
   const current = await prisma.transportContract.findFirst({ where: { id, projectId } });
   if (!current) throw new AppError("Không tìm thấy hợp đồng vận chuyển.", 404);
-  if (current.status === "ket_thuc") throw new AppError("Hợp đồng đã kết thúc, không sửa.", 400);
+  if (hopDongDangKhoa(current.status)) throw new AppError("Hợp đồng đã kết thúc/hủy, không sửa.", 400);
   const partner = input.partnerId === undefined ? null : await xeHopLe(chuoi(input.partnerId, 64));
   const pricingKind = input.pricingKind === undefined ? current.pricingKind : parsePricing(input.pricingKind);
   const unitPrice = input.unitPrice === undefined
@@ -265,7 +271,7 @@ export async function updateTransportContract(
       ? null
       : soNguyenKhongAm(input.unitPrice, "Đơn giá");
   const lines = input.lines === undefined ? null : cleanLines(input.lines, unitPrice, pricingKind);
-  const status: TransportStatus = input.status === undefined ? (current.status as TransportStatus) : parseStatus(input.status);
+  const status: TransportStatus = input.status === undefined ? parseStatus(current.status) : parseStatus(input.status);
   return prisma.$transaction(async (tx) => {
     if (lines) await tx.transportLine.deleteMany({ where: { contractId: id } });
     const row = await tx.transportContract.update({
@@ -296,7 +302,7 @@ export async function deleteTransportContract(user: User, projectId: string, id:
     include: { _count: { select: { advances: true } } },
   });
   if (!current) throw new AppError("Không tìm thấy hợp đồng vận chuyển.", 404);
-  if (current._count.advances > 0) throw new AppError("Hợp đồng đã có tạm ứng, không xóa. Hãy kết thúc thay vì xóa.", 400);
+  if (current._count.advances > 0) throw new AppError("Hợp đồng đã có thanh toán, không xóa. Hãy kết thúc thay vì xóa.", 400);
   await prisma.$transaction(async (tx) => {
     await writeAudit(tx, user.id, "xoa", "hop_dong_van_chuyen", id, `Xóa ${current.code} của ${project.code}`);
     await tx.transportContract.delete({ where: { id } });
@@ -313,13 +319,13 @@ export async function addTransportAdvance(
   const project = await moCongTrinh(user, projectId);
   const current = await prisma.transportContract.findFirst({ where: { id: contractId, projectId } });
   if (!current) throw new AppError("Không tìm thấy hợp đồng vận chuyển.", 404);
-  if (current.status === "nhap") throw new AppError("Lưu hợp đồng trước khi ghi tạm ứng.", 400);
+  if (!hopDongChoThanhToan(current.status)) throw new AppError("Trạng thái hiện tại không cho ghi thanh toán.", 400);
   const amount = soTien(input.amount);
   const occurredOn = ngayBatBuoc(input.occurredOn);
   const payerId = chuoi(input.payerId, 64);
   if (payerId) {
     const staff = await prisma.staff.findUnique({ where: { id: payerId }, select: { id: true } });
-    if (!staff) throw new AppError("Không tìm thấy người chi tạm ứng.", 400);
+    if (!staff) throw new AppError("Không tìm thấy người chi thanh toán.", 400);
   }
   return prisma.$transaction(async (tx) => {
     const row = await tx.transportAdvance.create({
@@ -331,7 +337,7 @@ export async function addTransportAdvance(
         note: chuoi(input.note, 300),
       },
     });
-    await writeAudit(tx, user.id, "tao", "tam_ung_van_chuyen", row.id, `Tạm ứng ${amount.toLocaleString("vi-VN")} ₫ cho ${current.code} · ${project.code}`);
+    await writeAudit(tx, user.id, "tao", "thanh_toan_van_chuyen", row.id, `Thanh toán ${amount.toLocaleString("vi-VN")} ₫ cho ${current.code} · ${project.code}`);
     const full = await tx.transportContract.findUniqueOrThrow({ where: { id: contractId }, include });
     return present(full);
   });
@@ -344,9 +350,9 @@ export async function deleteTransportAdvance(user: User, projectId: string, cont
     where: { id: advanceId, contractId, contract: { projectId } },
     include: { contract: { select: { code: true } } },
   });
-  if (!current) throw new AppError("Không tìm thấy khoản tạm ứng.", 404);
+  if (!current) throw new AppError("Không tìm thấy khoản thanh toán.", 404);
   await prisma.$transaction(async (tx) => {
-    await writeAudit(tx, user.id, "xoa", "tam_ung_van_chuyen", advanceId, `Xóa tạm ứng của ${current.contract.code} · ${project.code}`);
+    await writeAudit(tx, user.id, "xoa", "thanh_toan_van_chuyen", advanceId, `Xóa thanh toán của ${current.contract.code} · ${project.code}`);
     await tx.transportAdvance.delete({ where: { id: advanceId } });
   });
   const full = await prisma.transportContract.findUniqueOrThrow({ where: { id: contractId }, include });
@@ -355,7 +361,7 @@ export async function deleteTransportAdvance(user: User, projectId: string, cont
 
 export async function tongChiPhiVanChuyen(projectId: string) {
   const rows = await prisma.transportContract.findMany({
-    where: { projectId, status: { in: ["da_luu", "ket_thuc"] } },
+    where: { projectId, status: { in: [...contractStatusTinhChiPhi] } },
     select: { lines: { select: { amount: true } } },
   });
   return rows.reduce((tong, hop) => tong + hop.lines.reduce((dong, line) => dong + line.amount, 0), 0);

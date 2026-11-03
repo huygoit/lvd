@@ -7,6 +7,7 @@ import type { Prisma } from "@prisma/client";
 import type { User } from "@/shared/auth/types";
 import { hasAnyCapability, hasCapability } from "@/shared/auth/types";
 import { isGlassMaterial } from "@/shared/catalog/materials";
+import { nhanContractStatus } from "@/shared/catalog/contract-status";
 import { formatStockQty } from "@/shared/catalog/stock";
 import { prisma } from "@/shared/db";
 import { AppError } from "@/shared/errors";
@@ -15,6 +16,9 @@ import { assertAny, assertOwn } from "@/modules/system/access";
 import { nextCode } from "@/modules/system/codes";
 
 const photoRoot = path.join(process.cwd(), "storage", "giao-hang");
+
+// HĐ gia công còn được giao vật tư ra xưởng.
+const hopDongGiaoXuong = ["da_ky", "co_hieu_luc", "dang_thuc_hien"] as const;
 
 type ProjectCard = { id: string; code: string; name: string; ownerId: string };
 
@@ -155,6 +159,7 @@ function sourceLabel(fromKind: string, orderCode: string) {
 const slipInclude = {
   project: { select: { id: true, code: true, name: true, ownerId: true } },
   order: { select: { code: true } },
+  fabricationContract: { select: { id: true, code: true, name: true, status: true, partner: { select: { name: true } } } },
   lines: {
     orderBy: { sortOrder: "asc" as const },
     include: { material: { select: { code: true, name: true, stockUnit: true } } },
@@ -172,6 +177,11 @@ function presentSlip(slip: Prisma.StockSlipGetPayload<{ include: typeof slipIncl
     sourceLabel: sourceLabel(slip.fromKind, slip.order?.code ?? ""),
     toKind: slip.toKind || "cong_trinh",
     toRef: slip.toRef,
+    fabricationContractId: slip.fabricationContractId ?? "",
+    fabricationContractCode: slip.fabricationContract?.code ?? "",
+    fabricationContractName: slip.fabricationContract?.name ?? "",
+    fabricationContractStatus: slip.fabricationContract ? nhanContractStatus(slip.fabricationContract.status) : "",
+    workshopName: slip.fabricationContract?.partner.name ?? "",
     expectedAt: slip.expectedAt?.toISOString() ?? "",
     createdAt: slip.createdAt.toISOString(),
     lines: slip.lines.map((line) => ({
@@ -200,6 +210,7 @@ async function createDelivery(
     toRef?: string;
     expectedAt?: Date | null;
     workshopUserId?: string | null;
+    fabricationContractId?: string | null;
   },
 ) {
   const slip = await prisma.$transaction(async (tx) => {
@@ -221,6 +232,7 @@ async function createDelivery(
         projectId: input.project.id,
         partnerId: input.partnerId,
         orderId: input.orderId,
+        fabricationContractId: input.fabricationContractId || null,
         fromKind: input.fromKind,
         toKind: input.toKind || "cong_trinh",
         toRef: input.toRef ?? input.project.id,
@@ -337,7 +349,14 @@ export async function deliveryPlan(user: User, projectId: string, orderId: strin
     where: { orderId, kind: "giao_hang", status: { in: ["cho_nhan", "da_nhan"] } },
     select: { status: true, toKind: true, lines: { select: { orderLineId: true, materialId: true, lengthMm: true, documentQty: true, receivedQty: true } } },
   });
-  const workshops = await danhXuong();
+  const [workshops, contracts] = await Promise.all([
+    danhXuong(),
+    prisma.fabricationContract.findMany({
+      where: { projectId, status: { in: [...hopDongGiaoXuong] } },
+      select: { id: true, code: true, name: true, status: true, partnerId: true, partner: { select: { name: true } } },
+      orderBy: [{ updatedAt: "desc" }],
+    }),
+  ]);
   const allocated = new Map(phanBoGiao(order.kind, order.lines, slips).map((line) => [line.lineId, line]));
   return {
     code: order.code,
@@ -359,6 +378,15 @@ export async function deliveryPlan(user: User, projectId: string, orderId: strin
       }];
     }),
     workshops,
+    contracts: contracts.map((row) => ({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      status: row.status,
+      statusLabel: nhanContractStatus(row.status),
+      partnerId: row.partnerId,
+      partnerName: row.partner.name,
+    })),
   };
 }
 
@@ -396,6 +424,7 @@ export async function dispatchOrder(user: User, projectId: string, orderId: stri
   const expectedAt = gioDuKien(input.expectedAt);
   let toRef = order.project.id;
   let workshopUserId: string | null = null;
+  let fabricationContractId: string | null = null;
   if (destination === "kho") toRef = "";
   if (destination === "xuong") {
     const workshopId = String(input.workshopId ?? "");
@@ -405,6 +434,11 @@ export async function dispatchOrder(user: User, projectId: string, orderId: stri
     const contact = await prisma.workshopContact.findUnique({ where: { id: workshopId }, select: { userId: true } });
     toRef = workshopId;
     workshopUserId = contact?.userId ?? null;
+    const hopId = String(input.fabricationContractId ?? "").trim();
+    if (!hopId) throw new AppError("Chọn hợp đồng gia công để biết phiếu thuộc hợp đồng nào.", 400);
+    const hop = plan.contracts.find((row) => row.id === hopId && row.partnerId === workshopId);
+    if (!hop) throw new AppError("Hợp đồng gia công không thuộc xưởng đã chọn hoặc không còn hiệu lực giao.", 400);
+    fabricationContractId = hop.id;
   }
   const sent = new Map<string, number>();
   const raw = Array.isArray(input.lines) ? input.lines : [];
@@ -443,6 +477,7 @@ export async function dispatchOrder(user: User, projectId: string, orderId: stri
     toRef,
     expectedAt,
     workshopUserId,
+    fabricationContractId,
   });
 }
 
@@ -672,4 +707,187 @@ export async function markNoticeRead(user: User, id: string) {
   if (!current) throw new AppError("Không tìm thấy thông báo.", 404);
   await prisma.notice.updateMany({ where: { id, userId: user.id, readAt: null }, data: { readAt: new Date() } });
   return { ok: true };
+}
+
+function nhanTrangThaiPhieu(status: string) {
+  if (status === "cho_nhan") return "Chờ nhận";
+  if (status === "da_nhan") return "Đã nhận";
+  return status;
+}
+
+// Nơi nhận theo toKind phiếu giao.
+function nhanNoiNhan(toKind: string, projectName: string, workshopName: string) {
+  if (toKind === "kho") return "Kho công ty";
+  if (toKind === "xuong") return workshopName ? `Xưởng · ${workshopName}` : "Xưởng gia công";
+  return projectName ? `Công trình · ${projectName}` : "Công trình";
+}
+
+type DongDonGia = {
+  id: string;
+  totalGrams: number;
+  quantityMilli: number;
+  unitPrice: number;
+  lengthMm: number;
+  barCount: number;
+  taxBps: number;
+};
+
+// Thành tiền theo SL giao (milli), cùng công thức đơn hàng — không import orders để tránh vòng phụ thuộc.
+function tienTheoSlGiao(
+  kind: string,
+  line: DongDonGia,
+  qtyMilli: number,
+  vatMode: string,
+  vatInline: boolean,
+) {
+  if (!line.unitPrice || qtyMilli <= 0) return 0;
+  let tien = 0;
+  if (kind === "kinh") {
+    const tam = qtyMilli / 1000;
+    const metVuong = Math.round((line.lengthMm * line.barCount * tam) / 10_000);
+    tien = Math.round((metVuong * line.unitPrice) / 100);
+  } else if (kind === "nhom") {
+    const ordered = line.barCount * 1000;
+    if (ordered <= 0) return 0;
+    // Quy đổi gram theo tỷ lệ số thanh giao.
+    const grams = Math.round((line.totalGrams * qtyMilli) / ordered);
+    tien = Math.round((grams * line.unitPrice) / 1000);
+  } else {
+    tien = Math.round((qtyMilli * line.unitPrice) / 1000);
+  }
+  if (vatMode === "khong_ro") return tien;
+  if (!vatInline && vatMode === "gom_vat") return tien;
+  if (!tien || !line.taxBps) return tien;
+  return tien + Math.round((tien * line.taxBps) / 10000);
+}
+
+// Lịch sử các đợt giao của một đơn: người giao/nhận lấy từ nhật ký.
+export async function listOrderDeliveryHistory(user: User, projectId: string, orderId: string) {
+  const order = await prisma.projectOrder.findFirst({
+    where: { id: orderId, projectId },
+    select: {
+      id: true,
+      code: true,
+      kind: true,
+      vatMode: true,
+      vatInline: true,
+      project: { select: { id: true, code: true, name: true, ownerId: true } },
+      lines: {
+        select: {
+          id: true,
+          totalGrams: true,
+          quantityMilli: true,
+          unitPrice: true,
+          lengthMm: true,
+          barCount: true,
+          taxBps: true,
+        },
+      },
+    },
+  });
+  if (!order) throw new AppError("Không tìm thấy đơn hàng.", 404);
+  assertSee(user, order.project.ownerId);
+  const dongDon = new Map(order.lines.map((dong) => [dong.id, dong]));
+
+  const slips = await prisma.stockSlip.findMany({
+    where: { orderId, kind: "giao_hang", status: { in: ["cho_nhan", "da_nhan"] } },
+    orderBy: [{ createdAt: "desc" }],
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      toKind: true,
+      expectedAt: true,
+      postedAt: true,
+      createdAt: true,
+      partner: { select: { name: true } },
+      fabricationContract: { select: { partner: { select: { name: true } } } },
+      // Ảnh nhận hàng = chứng từ đính kèm phiếu.
+      photos: { orderBy: { createdAt: "asc" as const }, select: { id: true } },
+      lines: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          orderLineId: true,
+          documentQty: true,
+          receivedQty: true,
+          lengthMm: true,
+          note: true,
+          material: { select: { code: true, name: true, groupName: true, stockUnit: true } },
+        },
+      },
+    },
+  });
+
+  const slipIds = slips.map((row) => row.id);
+  const audits = slipIds.length
+    ? await prisma.auditLog.findMany({
+        where: { entityType: "phieu_kho", entityId: { in: slipIds }, action: { in: ["giao", "nhan"] } },
+        orderBy: { createdAt: "asc" },
+        select: { entityId: true, action: true, actorId: true },
+      })
+    : [];
+  const actorIds = [...new Set(audits.map((row) => row.actorId))];
+  const staff = actorIds.length
+    ? await prisma.staff.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
+    : [];
+  const tenNhanVien = new Map(staff.map((row) => [row.id, row.name]));
+
+  // Mỗi phiếu: lần giao đầu = người giao, lần nhận cuối = người nhận.
+  const giaoBoi = new Map<string, string>();
+  const nhanBoi = new Map<string, string>();
+  for (const row of audits) {
+    const ten = tenNhanVien.get(row.actorId) || "";
+    if (row.action === "giao" && !giaoBoi.has(row.entityId)) giaoBoi.set(row.entityId, ten);
+    if (row.action === "nhan") nhanBoi.set(row.entityId, ten);
+  }
+
+  return {
+    orderId: order.id,
+    orderCode: order.code,
+    projectName: order.project.name,
+    deliveries: slips.map((phieu) => {
+      const workshopName = phieu.fabricationContract?.partner.name || "";
+      const lines = phieu.lines.map((dong) => {
+        const goc = dong.orderLineId ? dongDon.get(dong.orderLineId) : undefined;
+        // Giá trị theo SL trên phiếu giao (documentQty).
+        const amount = goc
+          ? tienTheoSlGiao(order.kind, goc, dong.documentQty, order.vatMode, order.vatInline)
+          : 0;
+        return {
+          id: dong.id,
+          code: dong.material.code,
+          name: dong.material.name,
+          groupName: dong.material.groupName,
+          unit: dong.note || dong.material.stockUnit,
+          lengthMm: dong.lengthMm ?? 0,
+          documentQty: dong.documentQty,
+          receivedQty: dong.receivedQty,
+          amount,
+        };
+      });
+      return {
+        id: phieu.id,
+        code: phieu.code,
+        status: phieu.status,
+        statusLabel: nhanTrangThaiPhieu(phieu.status),
+        orderCode: order.code,
+        occurredAt: (phieu.postedAt ?? phieu.createdAt).toISOString(),
+        createdAt: phieu.createdAt.toISOString(),
+        postedAt: phieu.postedAt?.toISOString() ?? "",
+        expectedAt: phieu.expectedAt?.toISOString() ?? "",
+        destinationLabel: nhanNoiNhan(phieu.toKind || "cong_trinh", order.project.name, workshopName),
+        shipperName: giaoBoi.get(phieu.id) || "",
+        receiverName: nhanBoi.get(phieu.id) || "",
+        supplierName: phieu.partner?.name || "",
+        lineCount: lines.length,
+        amount: lines.reduce((tong, dong) => tong + dong.amount, 0),
+        photos: phieu.photos.map((anh) => ({
+          id: anh.id,
+          url: `/api/hien-truong/giao/${phieu.id}/anh/${anh.id}`,
+        })),
+        lines,
+      };
+    }),
+  };
 }

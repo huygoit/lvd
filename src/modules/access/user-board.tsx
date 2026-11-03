@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Pencil, Plus, Save, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, Field, inputClass, panelClass, selectClass } from "@/shared/components/controls";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -155,7 +156,7 @@ export function UserBoard({
           <h1 className="text-2xl font-semibold text-ink">Người dùng</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">Tạo tài khoản và mật khẩu, rồi gán vai trò. Quyền đang dùng là hợp của các vai trò còn hiệu lực.</p>
         </div>
-        <button type="button" className={buttonPrimary} onClick={openCreate}>Thêm người dùng</button>
+        <button type="button" className={buttonPrimary} onClick={openCreate}><Plus className="size-4" aria-hidden /> Thêm người dùng</button>
       </div>
       <div className={panelClass}>
         <Table>
@@ -190,7 +191,9 @@ export function UserBoard({
                   </span>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button type="button" size="sm" variant="outline" onClick={() => openEdit(row)}>Sửa</Button>
+                  <ActionBadge onClick={() => openEdit(row)}>
+                    <Pencil className="size-3.5" aria-hidden /> Sửa
+                  </ActionBadge>
                 </TableCell>
               </TableRow>
             ))}
@@ -264,8 +267,8 @@ export function UserBoard({
                   {current.active ? "Ngừng đăng nhập" : "Cho đăng nhập"}
                 </Button>
               ) : null}
-              <Button type="button" variant="outline" disabled={busy} onClick={close}>Đóng</Button>
-              <Button type="button" disabled={busy} onClick={() => void save()}>{busy ? "Đang lưu" : "Lưu"}</Button>
+              <Button type="button" variant="outline" disabled={busy} onClick={close}><X className="size-4" aria-hidden /> Đóng</Button>
+              <Button type="button" disabled={busy} onClick={() => void save()}><Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu"}</Button>
             </SheetFooter>
           </div>
         </SheetContent>

@@ -1,5 +1,7 @@
 "use client";
 
+import { Save } from "lucide-react";
+
 import { useState } from "react";
 import { callApi } from "@/shared/client/api";
 import { Button } from "@/shared/components/ui/button";
@@ -40,7 +42,7 @@ export function WorkshopScreen({ workshops, users }: { workshops: Workshop[]; us
             <option value="">Chưa gán</option>
             {users.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
           </select>
-          <Button type="button" variant="outline" disabled={busy === row.id} onClick={() => void luu(row)}>{busy === row.id ? "Đang lưu" : "Lưu"}</Button>
+          <Button type="button" variant="outline" disabled={busy === row.id} onClick={() => void luu(row)}><Save className="size-4" aria-hidden /> {busy === row.id ? "Đang lưu" : "Lưu"}</Button>
         </div>
       ))}
     </div>

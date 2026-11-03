@@ -1,5 +1,7 @@
 "use client";
 
+import { BookCheck, Filter, Pencil, Plus, Trash2, X } from "lucide-react";
+
 import { Fragment, useEffect, useState } from "react";
 import { DispatchSheet } from "@/modules/stock/dispatch-sheet";
 import Link from "next/link";
@@ -185,7 +187,7 @@ export function StockBoard({
         {canCreate ? (
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" onClick={() => setDispatchOpen(true)}>Giao đến công trình</Button>
-            <Button type="button" onClick={() => open("them")}>Thêm phiếu</Button>
+            <Button type="button" onClick={() => open("them")}><Plus className="size-4" aria-hidden /> Thêm phiếu</Button>
           </div>
         ) : null}
       </div>
@@ -207,7 +209,7 @@ export function StockBoard({
               <input type="checkbox" name="het" value="1" defaultChecked={includeClosed} />
               Xem cả đã lắp và hỏng
             </label>
-            <button className={buttonPrimary}>Lọc</button>
+            <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
           </form>
           {pending.length > 0 ? (
             <div className="rounded-[18px] border border-line bg-white px-4 py-3">
@@ -265,7 +267,7 @@ export function StockBoard({
               <option value="">Mọi loại</option>
               {stockSlipKinds.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
             </select>
-            <button className={buttonPrimary}>Lọc</button>
+            <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
           </form>
           <div className={panelClass}>
             <Table>
@@ -343,8 +345,9 @@ export function StockBoard({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={acting}>Hủy</AlertDialogCancel>
+            <AlertDialogCancel disabled={acting}><X className="size-4" aria-hidden /> Hủy</AlertDialogCancel>
             <Button type="button" variant={ask === "xoa" ? "destructive" : "default"} disabled={acting} onClick={ask === "xoa" ? removeCurrent : postCurrent}>
+              {ask === "xoa" ? <Trash2 className="size-4" aria-hidden /> : <BookCheck className="size-4" aria-hidden />}
               {acting ? "Đang xử lý" : ask === "xoa" ? "Xóa nháp" : "Ghi sổ"}
             </Button>
           </AlertDialogFooter>
@@ -392,7 +395,7 @@ function SlipDetail({
             </div>
           ))}
         </dl>
-        <div className="overflow-x-auto rounded-xl border border-line">
+        <div className="overflow-x-auto rounded-2xl border border-line">
           <table className="w-full text-sm">
             <thead className="bg-soft text-left text-xs text-muted">
               <tr>
@@ -458,10 +461,10 @@ function SlipDetail({
       <div className="sticky bottom-0 z-10 shrink-0 border-t border-line bg-white px-5 py-3">
         {error ? <p role="alert" className="mb-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm font-medium text-danger">{error}</p> : null}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Đóng</Button>
-          {canUpdate && draft ? <Button type="button" variant="outline" onClick={onDelete}>Xóa nháp</Button> : null}
-          {canUpdate && draft ? <Button type="button" variant="outline" onClick={onEdit}>Sửa</Button> : null}
-          {canUpdate && draft ? <Button type="button" onClick={onPost}>Ghi sổ</Button> : null}
+          <Button type="button" variant="outline" onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
+          {canUpdate && draft ? <Button type="button" variant="outline" onClick={onDelete}><Trash2 className="size-4" aria-hidden /> Xóa nháp</Button> : null}
+          {canUpdate && draft ? <Button type="button" variant="outline" onClick={onEdit}><Pencil className="size-4" aria-hidden /> Sửa</Button> : null}
+          {canUpdate && draft ? <Button type="button" onClick={onPost}><BookCheck className="size-4" aria-hidden /> Ghi sổ</Button> : null}
         </div>
       </div>
     </div>
@@ -536,7 +539,7 @@ function ConfirmKg({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Hủy</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}><X className="size-4" aria-hidden /> Hủy</AlertDialogCancel>
             <Button type="button" disabled={busy} onClick={send}>{busy ? "Đang xác nhận" : "Xác nhận"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>

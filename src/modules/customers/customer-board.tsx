@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { Filter, Pencil, Plus, Trash2, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, inputClass, panelClass, selectClass } from "@/shared/components/controls";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -201,7 +202,7 @@ export function CustomerBoard({
           <p className="mt-1 text-sm text-muted">{countLabel}. Bấm mã hoặc tên để xem.</p>
         </div>
         {canCreate ? (
-          <button type="button" className={buttonPrimary} onClick={() => openMode("them")}>Thêm khách hàng mới</button>
+          <button type="button" className={buttonPrimary} onClick={() => openMode("them")}><Plus className="size-4" aria-hidden /> Thêm khách hàng mới</button>
         ) : null}
       </div>
       <form className="flex flex-wrap gap-2" action="/khach-hang">
@@ -216,7 +217,7 @@ export function CustomerBoard({
           <option value="dang_dung">Đang sử dụng</option>
           <option value="luu_tru">Đã lưu trữ</option>
         </select>
-        <button className={buttonPrimary}>Lọc</button>
+        <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
       </form>
       <div className={panelClass}>
         <Table>
@@ -253,25 +254,22 @@ export function CustomerBoard({
                 </TableCell>
                 <TableCell className="text-muted">{row.email || "—"}</TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
+                  <div className="flex flex-wrap justify-end gap-1.5">
                     {canUpdate ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => openMode("sua", row.id)}>
-                        <Pencil /> Sửa
-                      </Button>
+                      <ActionBadge onClick={() => openMode("sua", row.id)}>
+                        <Pencil className="size-3.5" aria-hidden /> Sửa
+                      </ActionBadge>
                     ) : null}
                     {canDelete ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-danger hover:text-danger"
+                      <ActionBadge
+                        tone="danger"
                         onClick={() => {
                           setDeleteError("");
                           setPendingDelete(row);
                         }}
                       >
-                        <Trash2 /> Xóa
-                      </Button>
+                        <Trash2 className="size-3.5" aria-hidden /> Xóa
+                      </ActionBadge>
                     ) : null}
                   </div>
                 </TableCell>
@@ -317,7 +315,7 @@ export function CustomerBoard({
                 {loadError ? <p className="text-sm text-danger">{loadError}</p> : <p className="text-sm text-muted">Đang tải hồ sơ...</p>}
               </div>
               <div className="sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-line bg-white px-5 py-3">
-                <Button type="button" variant="outline" onClick={() => openMode(null)}>Đóng</Button>
+                <Button type="button" variant="outline" onClick={() => openMode(null)}><X className="size-4" aria-hidden /> Đóng</Button>
               </div>
             </div>
           ) : null}
@@ -411,7 +409,7 @@ export function CustomerBoard({
                 ) : null}
               </div>
               <div className="sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-line bg-white px-5 py-3">
-                <Button type="button" variant="outline" onClick={() => openMode(null)}>Đóng</Button>
+                <Button type="button" variant="outline" onClick={() => openMode(null)}><X className="size-4" aria-hidden /> Đóng</Button>
               </div>
             </div>
           ) : null}
@@ -428,9 +426,9 @@ export function CustomerBoard({
           </AlertDialogHeader>
           {deleteError ? <p className="mt-2 text-sm text-danger">{deleteError}</p> : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Hủy</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}><X className="size-4" aria-hidden /> Hủy</AlertDialogCancel>
             <Button type="button" variant="destructive" disabled={deleting} onClick={confirmDelete}>
-              {deleting ? "Đang xóa" : "Xóa"}
+              <Trash2 className="size-4" aria-hidden /> {deleting ? "Đang xóa" : "Xóa"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

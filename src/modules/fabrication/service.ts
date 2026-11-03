@@ -12,7 +12,6 @@ import {
   ngayBatBuoc,
   ngayTuyChon,
   parseStatus,
-  parseSupply,
   parseVat,
   soLuongMilli,
   soNguyenKhongAm,
@@ -20,6 +19,12 @@ import {
   thanhTienDong,
   type FabricationStatus,
 } from "@/modules/fabrication/fields";
+import {
+  chuanHoaContractStatus,
+  contractStatusTinhChiPhi,
+  hopDongChoThanhToan,
+  hopDongDangKhoa,
+} from "@/shared/catalog/contract-status";
 
 function batXem(user: User) {
   if (!hasCapability(user, "fabrication.view") && !hasAnyCapability(user, ["projects.view", "projects.view.assigned", "projects.update", "projects.create"])) {
@@ -57,7 +62,40 @@ const include = {
   partner: { select: { id: true, code: true, name: true } },
   lines: { orderBy: { sortOrder: "asc" as const } },
   advances: { orderBy: [{ occurredOn: "desc" as const }, { createdAt: "desc" as const }] },
+  stockSlips: {
+    where: { kind: "giao_hang", status: { in: ["cho_nhan", "da_nhan"] } },
+    orderBy: [{ createdAt: "desc" as const }],
+    select: {
+      id: true,
+      code: true,
+      status: true,
+      expectedAt: true,
+      createdAt: true,
+      // NCC trên phiếu hoặc từ đơn gốc.
+      partner: { select: { name: true } },
+      order: { select: { code: true, supplierName: true, partner: { select: { name: true } } } },
+      // Ảnh chứng từ nhận hàng — cùng nguồn với lịch sử giao đơn.
+      photos: { orderBy: { createdAt: "asc" as const }, select: { id: true } },
+      lines: {
+        orderBy: { sortOrder: "asc" as const },
+        select: {
+          id: true,
+          documentQty: true,
+          receivedQty: true,
+          lengthMm: true,
+          note: true,
+          material: { select: { code: true, name: true, groupName: true, stockUnit: true } },
+        },
+      },
+    },
+  },
 };
+
+function nhanPhieuGiao(status: string) {
+  if (status === "cho_nhan") return "Chờ nhận";
+  if (status === "da_nhan") return "Đã nhận";
+  return status;
+}
 
 function present(row: {
   id: string;
@@ -65,10 +103,8 @@ function present(row: {
   projectId: string;
   partnerId: string;
   name: string;
-  supplyKind: string;
   status: string;
   signedOn: string;
-  ratePerM2: number | null;
   taxBps: number;
   note: string;
   revision: number;
@@ -85,14 +121,34 @@ function present(row: {
     areaOverrideMilli: number | null;
     unitPrice: number;
     amount: number;
+    taxBps: number;
     note: string;
   }[];
   advances: { id: string; occurredOn: string; amount: number; payerId: string; note: string; createdAt: Date }[];
+  stockSlips?: {
+    id: string;
+    code: string;
+    status: string;
+    expectedAt: Date | null;
+    createdAt: Date;
+    partner: { name: string } | null;
+    order: { code: string; supplierName: string; partner: { name: string } | null } | null;
+    photos: { id: string }[];
+    lines: {
+      id: string;
+      documentQty: number;
+      receivedQty: number;
+      lengthMm: number | null;
+      note: string;
+      material: { code: string; name: string; groupName: string; stockUnit: string };
+    }[];
+  }[];
 }) {
   const truocThue = row.lines.reduce((tong, dong) => tong + dong.amount, 0);
-  const tienThue = Math.round((truocThue * row.taxBps) / 10000);
+  // Tiền thuế cộng từ từng dòng (VAT theo dòng).
+  const tienThue = row.lines.reduce((tong, dong) => tong + Math.round((dong.amount * dong.taxBps) / 10000), 0);
   const tongHopDong = truocThue + tienThue;
-  const tongTamUng = row.advances.reduce((tong, dong) => tong + dong.amount, 0);
+  const tongDaThanhToan = row.advances.reduce((tong, dong) => tong + dong.amount, 0);
   return {
     id: row.id,
     code: row.code,
@@ -101,18 +157,16 @@ function present(row: {
     partnerCode: row.partner.code,
     partnerName: row.partner.name,
     name: row.name,
-    supplyKind: row.supplyKind,
-    status: row.status,
+    status: chuanHoaContractStatus(row.status),
     signedOn: row.signedOn,
-    ratePerM2: row.ratePerM2,
     taxBps: row.taxBps,
     note: row.note,
     revision: row.revision,
     truocThue,
     tienThue,
     tongHopDong,
-    tongTamUng,
-    conLai: tongHopDong - tongTamUng,
+    tongDaThanhToan,
+    conLai: tongHopDong - tongDaThanhToan,
     lines: row.lines.map((dong) => ({
       id: dong.id,
       sortOrder: dong.sortOrder,
@@ -125,6 +179,8 @@ function present(row: {
       areaOverrideM2: dong.areaOverrideMilli === null ? null : dong.areaOverrideMilli / 1000,
       unitPrice: dong.unitPrice,
       amount: dong.amount,
+      taxBps: dong.taxBps,
+      tienThue: Math.round((dong.amount * dong.taxBps) / 10000),
       note: dong.note,
     })),
     advances: row.advances.map((dong) => ({
@@ -135,6 +191,35 @@ function present(row: {
       note: dong.note,
       createdAt: dong.createdAt.toISOString(),
     })),
+    deliveries: (row.stockSlips ?? []).map((phieu) => {
+      // Ưu tiên NCC trên phiếu → tên NCC đơn → đối tác đơn.
+      const supplierName = phieu.partner?.name || phieu.order?.supplierName || phieu.order?.partner?.name || "";
+      return {
+        id: phieu.id,
+        code: phieu.code,
+        status: phieu.status,
+        statusLabel: nhanPhieuGiao(phieu.status),
+        orderCode: phieu.order?.code ?? "",
+        supplierName,
+        lineCount: phieu.lines.length,
+        expectedAt: phieu.expectedAt?.toISOString() ?? "",
+        createdAt: phieu.createdAt.toISOString(),
+        photos: (phieu.photos ?? []).map((anh) => ({
+          id: anh.id,
+          url: `/api/hien-truong/giao/${phieu.id}/anh/${anh.id}`,
+        })),
+        lines: phieu.lines.map((dong) => ({
+          id: dong.id,
+          code: dong.material.code,
+          name: dong.material.name,
+          groupName: dong.material.groupName,
+          unit: dong.note || dong.material.stockUnit,
+          lengthMm: dong.lengthMm ?? 0,
+          documentQty: dong.documentQty,
+          receivedQty: dong.receivedQty,
+        })),
+      };
+    }),
   };
 }
 
@@ -145,10 +230,11 @@ type LineInput = {
   quantity?: unknown;
   areaOverride?: unknown;
   unitPrice?: unknown;
+  taxBps?: unknown;
   note?: unknown;
 };
 
-function cleanLines(raw: unknown, ratePerM2: number | null) {
+function cleanLines(raw: unknown) {
   if (!Array.isArray(raw)) throw new AppError("Danh sách dòng gia công không hợp lệ.", 400);
   if (raw.length > 200) throw new AppError("Một hợp đồng tối đa 200 dòng.", 400);
   return raw.map((item, index) => {
@@ -158,11 +244,11 @@ function cleanLines(raw: unknown, ratePerM2: number | null) {
     const widthMm = soNguyenKhongAm(dong.widthMm, "Chiều rộng");
     const heightMm = soNguyenKhongAm(dong.heightMm, "Chiều cao");
     const quantityMilli = soLuongMilli(dong.quantity);
-    const unitPrice = dong.unitPrice === undefined || dong.unitPrice === null || String(dong.unitPrice).trim() === ""
-      ? ratePerM2 ?? 0
-      : soNguyenKhongAm(dong.unitPrice, "Đơn giá");
+    const unitPrice = soNguyenKhongAm(dong.unitPrice, "Đơn giá");
     const areaOverrideMilli = khoiLuongOverrideMilli(dong.areaOverride);
     const areaMilli = areaOverrideMilli ?? dienTichMilli(widthMm, heightMm, quantityMilli);
+    const amount = thanhTienDong(areaMilli, unitPrice);
+    const taxBps = parseVat(dong.taxBps);
     return {
       sortOrder: index + 1,
       name,
@@ -173,7 +259,8 @@ function cleanLines(raw: unknown, ratePerM2: number | null) {
       areaMilli,
       areaOverrideMilli,
       unitPrice,
-      amount: thanhTienDong(areaMilli, unitPrice),
+      amount,
+      taxBps,
       note: chuoi(dong.note, 300),
     };
   });
@@ -211,9 +298,7 @@ export async function createFabricationContract(
   input: {
     partnerId?: unknown;
     name?: unknown;
-    supplyKind?: unknown;
     signedOn?: unknown;
-    ratePerM2?: unknown;
     taxBps?: unknown;
     note?: unknown;
     lines?: unknown;
@@ -226,13 +311,10 @@ export async function createFabricationContract(
   }
   const project = await moCongTrinh(user, projectId);
   const partner = await xuongHopLe(chuoi(input.partnerId, 64));
-  const ratePerM2 = input.ratePerM2 === undefined || String(input.ratePerM2 ?? "").trim() === ""
-    ? null
-    : soNguyenKhongAm(input.ratePerM2, "Đơn giá m²");
   const taxBps = parseVat(input.taxBps);
-  const lines = cleanLines(input.lines ?? [], ratePerM2);
-  const status = input.status === undefined ? (lines.length ? "da_luu" : "nhap") : parseStatus(input.status);
-  if (status !== "nhap" && status !== "da_luu") throw new AppError("Trạng thái tạo mới chỉ nhận nháp hoặc đã lưu.", 400);
+  const lines = cleanLines(input.lines ?? []);
+  const status = input.status === undefined ? (lines.length ? "dang_thuc_hien" : "nhap") : parseStatus(input.status);
+  if (hopDongDangKhoa(status)) throw new AppError("Không tạo hợp đồng ở trạng thái đã kết thúc/hủy.", 400);
   return prisma.$transaction(async (tx) => {
     const code = await nextCode(tx, "GC", new Date());
     const row = await tx.fabricationContract.create({
@@ -241,10 +323,8 @@ export async function createFabricationContract(
         projectId: project.id,
         partnerId: partner.id,
         name: chuoi(input.name, 200) || `Gia công kính · ${partner.name}`,
-        supplyKind: parseSupply(input.supplyKind ?? "lvd_cap_vat_tu"),
         status,
         signedOn: ngayTuyChon(input.signedOn),
-        ratePerM2,
         taxBps,
         note: chuoi(input.note, 1000),
         lines: { create: lines },
@@ -263,9 +343,7 @@ export async function updateFabricationContract(
   input: {
     partnerId?: unknown;
     name?: unknown;
-    supplyKind?: unknown;
     signedOn?: unknown;
-    ratePerM2?: unknown;
     taxBps?: unknown;
     note?: unknown;
     lines?: unknown;
@@ -279,16 +357,11 @@ export async function updateFabricationContract(
   const project = await moCongTrinh(user, projectId);
   const current = await prisma.fabricationContract.findFirst({ where: { id, projectId } });
   if (!current) throw new AppError("Không tìm thấy hợp đồng gia công.", 404);
-  if (current.status === "ket_thuc") throw new AppError("Hợp đồng đã kết thúc, không sửa.", 400);
+  if (hopDongDangKhoa(current.status)) throw new AppError("Hợp đồng đã kết thúc/hủy, không sửa.", 400);
   const partner = input.partnerId === undefined ? null : await xuongHopLe(chuoi(input.partnerId, 64));
-  const ratePerM2 = input.ratePerM2 === undefined
-    ? current.ratePerM2
-    : String(input.ratePerM2 ?? "").trim() === ""
-      ? null
-      : soNguyenKhongAm(input.ratePerM2, "Đơn giá m²");
   const taxBps = input.taxBps === undefined ? current.taxBps : parseVat(input.taxBps);
-  const lines = input.lines === undefined ? null : cleanLines(input.lines, ratePerM2);
-  const status: FabricationStatus = input.status === undefined ? (current.status as FabricationStatus) : parseStatus(input.status);
+  const lines = input.lines === undefined ? null : cleanLines(input.lines);
+  const status: FabricationStatus = input.status === undefined ? parseStatus(current.status) : parseStatus(input.status);
   return prisma.$transaction(async (tx) => {
     if (lines) await tx.fabricationLine.deleteMany({ where: { contractId: id } });
     const row = await tx.fabricationContract.update({
@@ -296,9 +369,7 @@ export async function updateFabricationContract(
       data: {
         partnerId: partner?.id ?? current.partnerId,
         name: input.name === undefined ? current.name : chuoi(input.name, 200) || current.name,
-        supplyKind: input.supplyKind === undefined ? current.supplyKind : parseSupply(input.supplyKind),
         signedOn: input.signedOn === undefined ? current.signedOn : ngayTuyChon(input.signedOn),
-        ratePerM2,
         taxBps,
         note: input.note === undefined ? current.note : chuoi(input.note, 1000),
         status,
@@ -320,7 +391,7 @@ export async function deleteFabricationContract(user: User, projectId: string, i
     include: { _count: { select: { advances: true } } },
   });
   if (!current) throw new AppError("Không tìm thấy hợp đồng gia công.", 404);
-  if (current._count.advances > 0) throw new AppError("Hợp đồng đã có tạm ứng, không xóa. Hãy kết thúc thay vì xóa.", 400);
+  if (current._count.advances > 0) throw new AppError("Hợp đồng đã có thanh toán, không xóa. Hãy kết thúc thay vì xóa.", 400);
   await prisma.$transaction(async (tx) => {
     await writeAudit(tx, user.id, "xoa", "hop_dong_gia_cong", id, `Xóa ${current.code} của ${project.code}`);
     await tx.fabricationContract.delete({ where: { id } });
@@ -337,13 +408,13 @@ export async function addFabricationAdvance(
   const project = await moCongTrinh(user, projectId);
   const current = await prisma.fabricationContract.findFirst({ where: { id: contractId, projectId } });
   if (!current) throw new AppError("Không tìm thấy hợp đồng gia công.", 404);
-  if (current.status === "nhap") throw new AppError("Lưu hợp đồng trước khi ghi tạm ứng.", 400);
+  if (!hopDongChoThanhToan(current.status)) throw new AppError("Trạng thái hiện tại không cho ghi thanh toán.", 400);
   const amount = soTien(input.amount);
   const occurredOn = ngayBatBuoc(input.occurredOn);
   const payerId = chuoi(input.payerId, 64);
   if (payerId) {
     const staff = await prisma.staff.findUnique({ where: { id: payerId }, select: { id: true } });
-    if (!staff) throw new AppError("Không tìm thấy người chi tạm ứng.", 400);
+    if (!staff) throw new AppError("Không tìm thấy người chi thanh toán.", 400);
   }
   return prisma.$transaction(async (tx) => {
     const row = await tx.fabricationAdvance.create({
@@ -355,7 +426,7 @@ export async function addFabricationAdvance(
         note: chuoi(input.note, 300),
       },
     });
-    await writeAudit(tx, user.id, "tao", "tam_ung_gia_cong", row.id, `Tạm ứng ${amount.toLocaleString("vi-VN")} ₫ cho ${current.code} · ${project.code}`);
+    await writeAudit(tx, user.id, "tao", "thanh_toan_gia_cong", row.id, `Thanh toán ${amount.toLocaleString("vi-VN")} ₫ cho ${current.code} · ${project.code}`);
     const full = await tx.fabricationContract.findUniqueOrThrow({ where: { id: contractId }, include });
     return present(full);
   });
@@ -368,24 +439,22 @@ export async function deleteFabricationAdvance(user: User, projectId: string, co
     where: { id: advanceId, contractId, contract: { projectId } },
     include: { contract: { select: { code: true } } },
   });
-  if (!current) throw new AppError("Không tìm thấy khoản tạm ứng.", 404);
+  if (!current) throw new AppError("Không tìm thấy khoản thanh toán.", 404);
   await prisma.$transaction(async (tx) => {
-    await writeAudit(tx, user.id, "xoa", "tam_ung_gia_cong", advanceId, `Xóa tạm ứng của ${current.contract.code} · ${project.code}`);
+    await writeAudit(tx, user.id, "xoa", "thanh_toan_gia_cong", advanceId, `Xóa thanh toán của ${current.contract.code} · ${project.code}`);
     await tx.fabricationAdvance.delete({ where: { id: advanceId } });
   });
   const full = await prisma.fabricationContract.findUniqueOrThrow({ where: { id: contractId }, include });
   return present(full);
 }
 
-// Tổng thanh toán (đã gồm VAT) của các hợp đồng đã lưu hoặc kết thúc, dùng cho tổng quan công trình.
+// Tổng thanh toán (đã gồm VAT) của hợp đồng đang/đã thực hiện, dùng cho tổng quan công trình.
 export async function tongChiPhiGiaCong(projectId: string) {
   const rows = await prisma.fabricationContract.findMany({
-    where: { projectId, status: { in: ["da_luu", "ket_thuc"] } },
-    select: { taxBps: true, lines: { select: { amount: true } } },
+    where: { projectId, status: { in: [...contractStatusTinhChiPhi] } },
+    select: { lines: { select: { amount: true, taxBps: true } } },
   });
   return rows.reduce((tong, hop) => {
-    const truocThue = hop.lines.reduce((dong, line) => dong + line.amount, 0);
-    const tienThue = Math.round((truocThue * hop.taxBps) / 10000);
-    return tong + truocThue + tienThue;
+    return tong + hop.lines.reduce((dong, line) => dong + line.amount + Math.round((line.amount * line.taxBps) / 10000), 0);
   }, 0);
 }

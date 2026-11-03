@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Plus } from "lucide-react";
 import { callApi } from "@/shared/client/api";
 import { panelClass } from "@/shared/components/controls";
 import { Button } from "@/shared/components/ui/button";
@@ -128,7 +128,7 @@ export function CategoryBoard({ initial }: { initial: Category[] }) {
               </TableCell>
               <TableCell className="text-right">
                 <Button type="button" size="sm" disabled={busy || name.trim().length < 2 || unit.trim().length === 0} onClick={add}>
-                  Thêm
+                  <Plus className="size-4" aria-hidden /> Thêm
                 </Button>
               </TableCell>
             </TableRow>

@@ -1,32 +1,15 @@
 import { AppError } from "@/shared/errors";
 import { isYmd } from "@/shared/lib/dates";
+import {
+  contractStatusLabel,
+  parseContractStatus,
+  type ContractStatus,
+} from "@/shared/catalog/contract-status";
 
-export const fabricationSupplyLabel = {
-  lvd_cap_vat_tu: "Liên Việt cấp kính, vật tư",
-  ncc_tron_goi: "Xưởng lo trọn vật tư và gia công",
-} as const;
-
-export type FabricationSupply = keyof typeof fabricationSupplyLabel;
-
-export const fabricationStatusLabel = {
-  nhap: "Nháp",
-  da_luu: "Đã lưu",
-  ket_thuc: "Kết thúc",
-} as const;
-
-export type FabricationStatus = keyof typeof fabricationStatusLabel;
-
-export function parseSupply(value: unknown): FabricationSupply {
-  const text = String(value ?? "").trim();
-  if (text in fabricationSupplyLabel) return text as FabricationSupply;
-  throw new AppError("Chọn hình thức cấp vật tư.", 400);
-}
-
-export function parseStatus(value: unknown): FabricationStatus {
-  const text = String(value ?? "").trim();
-  if (text in fabricationStatusLabel) return text as FabricationStatus;
-  throw new AppError("Trạng thái hợp đồng gia công không hợp lệ.", 400);
-}
+// Alias dùng chung — trạng thái hợp đồng gia công = catalog dùng chung.
+export const fabricationStatusLabel = contractStatusLabel;
+export type FabricationStatus = ContractStatus;
+export const parseStatus = parseContractStatus;
 
 export function chuoi(value: unknown, dai: number) {
   return String(value ?? "").trim().slice(0, dai);
@@ -41,7 +24,7 @@ export function ngayTuyChon(value: unknown) {
 
 export function ngayBatBuoc(value: unknown) {
   const text = String(value ?? "").trim();
-  if (!isYmd(text)) throw new AppError("Ngày tạm ứng không hợp lệ.", 400);
+  if (!isYmd(text)) throw new AppError("Ngày thanh toán không hợp lệ.", 400);
   return text;
 }
 
@@ -98,12 +81,25 @@ export function parseVat(value: unknown) {
   return bps;
 }
 
+// Đọc số kiểu VN: 1.473,448 → 1473.448 (chấm nghìn, phẩy thập phân).
+function parseSoVn(value: string) {
+  const raw = value.trim().replace(/\s/g, "");
+  if (!raw) return NaN;
+  if (raw.includes(",") && raw.includes(".")) return Number(raw.replace(/\./g, "").replace(",", "."));
+  if (raw.includes(",")) return Number(raw.replace(",", "."));
+  // Chỉ có chấm: nếu ≥2 chấm hoặc nhóm 3 số sau chấm cuối → coi là phân tách nghìn.
+  const cham = raw.match(/\./g)?.length ?? 0;
+  if (cham >= 2) return Number(raw.replace(/\./g, ""));
+  if (cham === 1 && /^\d{1,3}(\.\d{3})+$/.test(raw)) return Number(raw.replace(/\./g, ""));
+  return Number(raw);
+}
+
 // Khối lượng m² ×1000 do người dùng nhập đè. Trả null nếu không có.
 export function khoiLuongOverrideMilli(value: unknown) {
   if (value === undefined || value === null) return null;
-  const raw = String(value).trim().replace(",", ".");
-  if (!raw) return null;
-  const so = Number(raw);
+  const text = String(value).trim().replace(/,$/, "");
+  if (!text) return null;
+  const so = parseSoVn(text);
   if (!Number.isFinite(so) || so < 0) throw new AppError("Khối lượng không hợp lệ.", 400);
   const milli = Math.round(so * 1000);
   if (milli > 1_000_000_000) throw new AppError("Khối lượng quá lớn.", 400);

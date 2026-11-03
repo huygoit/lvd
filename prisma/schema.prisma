@@ -857,6 +857,9 @@ model StockSlip {
   project   Project?  @relation(fields: [projectId], references: [id])
   orderId   String?
   order     ProjectOrder? @relation(fields: [orderId], references: [id])
+  // HĐ gia công khi giao vật tư ra xưởng ngoài — biết phiếu thuộc hợp đồng nào.
+  fabricationContractId String?
+  fabricationContract   FabricationContract? @relation(fields: [fabricationContractId], references: [id])
   fromKind  String    @default("")
   fromRef   String    @default("")
   toKind    String    @default("")
@@ -878,6 +881,7 @@ model StockSlip {
   @@index([projectId])
   @@index([partnerId])
   @@index([orderId])
+  @@index([fabricationContractId])
 }
 
 // Ảnh nhận hàng tại công trình. Chỉ lưu tệp, không đọc chữ trong ảnh.
@@ -950,7 +954,7 @@ model AuditLog {
 }
 
 // Hợp đồng thuê xưởng gia công theo công trình. Không gộp với hợp đồng thi công/mua bán với khách.
-// Chi phí = tổng thành tiền dòng đã lưu. Tạm ứng chỉ theo dõi tiền đã đưa xưởng, không cộng thêm vào chi phí.
+// Chi phí = tổng thành tiền dòng đã lưu. Lịch sử thanh toán theo dõi tiền đã đưa xưởng, không cộng thêm vào chi phí.
 model FabricationContract {
   id         String   @id @default(cuid())
   code       String   @unique
@@ -959,13 +963,9 @@ model FabricationContract {
   partnerId  String
   partner    Partner  @relation(fields: [partnerId], references: [id])
   name       String   @default("")
-  // lvd_cap_vat_tu: Liên Việt đưa kính/vật tư. ncc_tron_goi: xưởng lo trọn.
-  supplyKind String   @default("lvd_cap_vat_tu")
-  // nhap | da_luu | ket_thuc
+  // Catalog dùng chung: src/shared/catalog/contract-status.ts
   status     String   @default("nhap")
   signedOn   String   @default("")
-  // Đơn giá m² mặc định khi thêm dòng. Có thể sửa từng dòng.
-  ratePerM2  Int?
   // VAT % × 100 (0 / 500 / 800 / 1000). Áp cho cả hợp đồng.
   taxBps     Int      @default(0)
   note       String   @default("")
@@ -974,6 +974,7 @@ model FabricationContract {
   updatedAt  DateTime @updatedAt
   lines      FabricationLine[]
   advances   FabricationAdvance[]
+  stockSlips StockSlip[]
 
   @@index([projectId])
   @@index([partnerId])
@@ -997,6 +998,8 @@ model FabricationLine {
   areaOverrideMilli Int?
   unitPrice      Int                 @default(0)
   amount         Int                 @default(0)
+  // VAT dòng ×100 (0 / 500 / 800 / 1000). Tiền thuế = amount × taxBps / 10000.
+  taxBps         Int                 @default(0)
   note           String              @default("")
 
   @@index([contractId])
@@ -1016,7 +1019,7 @@ model FabricationAdvance {
 }
 
 // Hợp đồng thuê vận chuyển theo công trình. Không gộp với hợp đồng khách.
-// Chi phí = tổng thành tiền dòng đã lưu. Tạm ứng chỉ theo dõi tiền đã đưa nhà xe.
+// Chi phí = tổng thành tiền dòng đã lưu. Lịch sử thanh toán theo dõi tiền đã đưa nhà xe.
 model TransportContract {
   id         String   @id @default(cuid())
   code       String   @unique
@@ -1027,7 +1030,7 @@ model TransportContract {
   name       String   @default("")
   // theo_chuyen | theo_tan | theo_kg | tron_goi
   pricingKind String  @default("theo_chuyen")
-  // nhap | da_luu | ket_thuc
+  // Catalog dùng chung: src/shared/catalog/contract-status.ts
   status     String   @default("nhap")
   signedOn   String   @default("")
   // Đơn giá mặc định khi thêm dòng.

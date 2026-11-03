@@ -2,7 +2,9 @@
 
 import { Fragment, useEffect, useRef, useState, type FocusEvent, type PointerEvent as SuKienChuot, type RefObject } from "react";
 import { measureUnits } from "@/shared/catalog/units";
+import { Trash2, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
+import { ActionBadge, listPanelClass } from "@/shared/components/action-badge";
 import { Button } from "@/shared/components/ui/button";
 import {
   AlertDialog,
@@ -406,7 +408,7 @@ export function ProjectItems({
       </p>
       {copyHint ? <p className="text-sm text-danger" role="alert">{copyHint}</p> : null}
       {loadError ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loadError}</p> : null}
-      <div className="overflow-x-auto rounded-xl border border-line bg-white">
+      <div className={listPanelClass}>
         <Table className="table-fixed">
           <TableHeader>
             <TableRow className="bg-soft hover:bg-soft">
@@ -494,7 +496,9 @@ export function ProjectItems({
                 </TableCell>
                 {canEdit ? (
                   <TableCell className="w-16 px-0 align-top">
-                    <Button type="button" size="sm" variant="ghost" className="text-danger" onClick={() => setPendingDelete(line)}>Xóa</Button>
+                    <ActionBadge tone="danger" onClick={() => setPendingDelete(line)}>
+                      <Trash2 className="size-3.5" aria-hidden /> Xóa
+                    </ActionBadge>
                     {line.status === "saving" ? <p className="px-2 text-xs text-muted">Đang lưu</p> : null}
                   </TableCell>
                 ) : null}
@@ -551,8 +555,8 @@ export function ProjectItems({
             <AlertDialogDescription>Hạng mục số {pendingDelete?.sortOrder} sẽ bị xóa khỏi công trình này.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPendingDelete(null)} disabled={deleting}>Hủy</Button>
-            <Button type="button" onClick={() => void remove()} disabled={deleting}>Xóa</Button>
+            <Button type="button" variant="outline" onClick={() => setPendingDelete(null)} disabled={deleting}><X className="size-4" aria-hidden /> Hủy</Button>
+            <Button type="button" onClick={() => void remove()} disabled={deleting}><Trash2 className="size-4" aria-hidden /> Xóa</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

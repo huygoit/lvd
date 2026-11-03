@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { cn } from "@/shared/lib/cn";
 import { ProjectFinanceOverview } from "@/modules/projects/project-finance-overview";
 import { ProjectItems, type HangMucActions } from "@/modules/projects/project-items";
-import { ProjectCosts, type ChiPhiActions } from "@/modules/projects/project-costs";
+import { ProjectCosts } from "@/modules/projects/project-costs";
 import { ProjectMaterials } from "@/modules/projects/project-materials";
 import { ProjectOrders } from "@/modules/projects/project-orders";
 import { ProjectDocuments } from "@/modules/projects/project-documents";
@@ -47,10 +47,8 @@ export function ProjectOverview({
   onEdit,
   onQuote,
   onHangMuc,
-  onChiPhi,
   onSauThue,
   addLineRef,
-  addCostRef,
 }: {
   project: {
     id: string;
@@ -78,27 +76,18 @@ export function ProjectOverview({
   onEdit: () => void;
   onQuote: () => void;
   onHangMuc: (active: boolean) => void;
-  onChiPhi: (active: boolean) => void;
   onSauThue: (value: number | null) => void;
   addLineRef: RefObject<HangMucActions | null>;
-  addCostRef: RefObject<ChiPhiActions | null>;
 }) {
   const [tab, setTab] = useState<Tab>("Tổng quan");
   const hangMuc = tab === "Hạng mục";
-  const chiPhi = tab === "Chi phí";
   const reported = useRef(hangMuc);
-  const reportedCost = useRef(chiPhi);
   if (reported.current !== hangMuc) {
     reported.current = hangMuc;
     onHangMuc(hangMuc);
   }
-  if (reportedCost.current !== chiPhi) {
-    reportedCost.current = chiPhi;
-    onChiPhi(chiPhi);
-  }
 
   useEffect(() => () => onHangMuc(false), [onHangMuc]);
-  useEffect(() => () => onChiPhi(false), [onChiPhi]);
 
   return (
     <div className="w-full space-y-4">
@@ -140,7 +129,7 @@ export function ProjectOverview({
           ? <ProjectTransport projectId={project.id} staff={staff} canEdit={canEditTransport} defaultPayerId={project.ownerId} />
           : <section className="rounded-xl border border-dashed border-line bg-soft px-4 py-16 text-center"><p className="text-sm text-muted">Bạn không có quyền xem hợp đồng vận chuyển.</p></section>
       ) : tab === "Chi phí" ? (
-        <ProjectCosts projectId={project.id} staff={staff} canEdit={canEdit} canSeeShared={canSeeShared} defaultPayerId={project.ownerId} addCostRef={addCostRef} />
+        <ProjectCosts projectId={project.id} staff={staff} canEdit={canEdit} canSeeShared={canSeeShared} defaultPayerId={project.ownerId} />
       ) : tab === "Tài liệu" ? (
         <ProjectDocuments projectId={project.id} canEdit={canEdit} />
       ) : (

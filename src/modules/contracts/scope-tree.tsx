@@ -1,5 +1,7 @@
 "use client";
 
+import { Plus } from "lucide-react";
+
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { callApi, formDataOf } from "@/shared/client/api";
@@ -249,7 +251,7 @@ export function ScopeTree({
                 </Field>
               ) : null}
               <div className="sm:col-span-2">
-                <button className={buttonPrimary} disabled={busy}>Thêm vào cây</button>
+                <button className={buttonPrimary} disabled={busy}><Plus className="size-4" aria-hidden /> Thêm vào cây</button>
               </div>
             </form>
           ) : null}

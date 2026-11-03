@@ -1,5 +1,7 @@
 "use client";
 
+import { Save, X } from "lucide-react";
+
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -227,10 +229,10 @@ export function PartnerForm({
           disabled={busy}
           onClick={() => (onClose ? onClose() : router.push("/doi-tac"))}
         >
-          Đóng
+          <X className="size-4" aria-hidden /> Đóng
         </Button>
         <Button type="submit" disabled={busy || Boolean(savedId)}>
-          {busy ? "Đang lưu" : "Lưu"}
+          <Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu"}
         </Button>
       </div>
     </form>

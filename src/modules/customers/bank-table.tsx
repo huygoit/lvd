@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useId } from "react";
 import { inputClass } from "@/shared/components/controls";
 import { Button } from "@/shared/components/ui/button";
@@ -124,7 +124,7 @@ export function BankAccountTable({
       ))}
       {readOnly ? null : (
         <button type="button" className="text-sm font-medium text-primary" onClick={() => onChange?.([...rows, emptyBankRow()])}>
-          Thêm tài khoản
+          <Plus className="size-4" aria-hidden /> Thêm tài khoản
         </button>
       )}
     </div>

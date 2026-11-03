@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
-import { Button } from "@/shared/components/ui/button";
+import { Building2, FileText, Pencil, Trash2 } from "lucide-react";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { cn } from "@/shared/lib/cn";
 import { ArchiveButton } from "@/modules/customers/contact-panel";
@@ -100,20 +100,26 @@ export function CustomerOverview({
               </div>
               <p className="mt-1 text-sm text-muted">{customer.code}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {canQuote && customer.status === "dang_dung" ? (
-                <Button type="button" size="sm" variant="outline" onClick={onQuote}>Lập báo giá</Button>
+                <ActionBadge tone="primary" onClick={onQuote}>
+                  <FileText className="size-3.5" aria-hidden /> Lập báo giá
+                </ActionBadge>
               ) : null}
               {canProject && customer.status === "dang_dung" ? (
-                <Button type="button" size="sm" variant="outline" onClick={onProject}>Tạo công trình</Button>
+                <ActionBadge tone="primary" onClick={onProject}>
+                  <Building2 className="size-3.5" aria-hidden /> Tạo công trình
+                </ActionBadge>
               ) : null}
               {canUpdate ? (
-                <Button type="button" size="sm" variant="outline" onClick={onEdit}><Pencil /> Sửa</Button>
+                <ActionBadge onClick={onEdit}>
+                  <Pencil className="size-3.5" aria-hidden /> Sửa
+                </ActionBadge>
               ) : null}
               {canDelete ? (
-                <Button type="button" size="sm" variant="outline" className="text-danger hover:text-danger" onClick={onDelete}>
-                  <Trash2 /> Xóa
-                </Button>
+                <ActionBadge tone="danger" onClick={onDelete}>
+                  <Trash2 className="size-3.5" aria-hidden /> Xóa
+                </ActionBadge>
               ) : null}
               {customer.status === "dang_dung" && canDelete ? <ArchiveButton id={customer.id} onDone={onChanged} /> : null}
             </div>

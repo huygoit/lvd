@@ -12,7 +12,8 @@ export const buttonPrimary = buttonVariants();
 
 export const buttonGhost = buttonVariants({ variant: "outline" });
 
-export const panelClass = "overflow-hidden rounded-xl border border-border bg-white shadow-[var(--shadow-card)]";
+// Khung danh sách — đồng bộ với thẻ đơn đặt hàng (rounded-2xl + border-line).
+export const panelClass = "overflow-hidden rounded-2xl border border-line bg-white";
 
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (

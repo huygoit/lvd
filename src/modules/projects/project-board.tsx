@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { ClipboardPaste, Filter, Pencil, Plus, Trash2, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
 import { formatUnitPrice } from "@/modules/projects/item-fields";
+import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, inputClass, panelClass, selectClass } from "@/shared/components/controls";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
@@ -12,7 +13,6 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { projectStageLabel } from "@/modules/customers/labels";
 import type { HangMucActions } from "@/modules/projects/project-items";
-import type { ChiPhiActions } from "@/modules/projects/project-costs";
 import { ProjectForm, type ProjectDraft } from "@/modules/projects/project-form";
 import { dateLabel, ProjectOverview } from "@/modules/projects/project-overview";
 import { ProjectProgress } from "@/modules/projects/project-progress";
@@ -103,13 +103,11 @@ export function ProjectBoard({
   const [loadError, setLoadError] = useState("");
   const [formKey, setFormKey] = useState(0);
   const [hangMuc, setHangMuc] = useState(false);
-  const [chiPhi, setChiPhi] = useState(false);
   const [sauThue, setSauThue] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const addLineRef = useRef<HangMucActions | null>(null);
-  const addCostRef = useRef<ChiPhiActions | null>(null);
 
   useEffect(() => {
     if (mode !== "sua" || !targetId) return;
@@ -191,7 +189,7 @@ export function ProjectBoard({
           <p className="mt-1 text-sm text-muted">{rows.length} công trình. Bấm tên để xem.</p>
         </div>
         {canCreate ? (
-          <button type="button" className={buttonPrimary} onClick={() => open("them", "", presetCustomer)}>Thêm công trình</button>
+          <button type="button" className={buttonPrimary} onClick={() => open("them", "", presetCustomer)}><Plus className="size-4" aria-hidden /> Thêm công trình</button>
         ) : null}
       </div>
       <form className="flex flex-wrap gap-2" action="/cong-trinh">
@@ -200,7 +198,7 @@ export function ProjectBoard({
           <option value="">Mọi giai đoạn</option>
           {Object.entries(projectStageLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        <button className={buttonPrimary}>Lọc</button>
+        <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
       </form>
       <div className={panelClass}>
         <Table>
@@ -249,13 +247,13 @@ export function ProjectBoard({
                   </TableCell>
                   <TableCell className="text-right">
                     {canEdit ? (
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => open("sua", row.id)}>
-                          <Pencil /> Sửa
-                        </Button>
-                        <Button type="button" size="sm" variant="outline" className="text-danger" onClick={() => { setDeleteError(""); setPendingDelete(row); }}>
-                          Xóa
-                        </Button>
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <ActionBadge onClick={() => open("sua", row.id)}>
+                          <Pencil className="size-3.5" aria-hidden /> Sửa
+                        </ActionBadge>
+                        <ActionBadge tone="danger" onClick={() => { setDeleteError(""); setPendingDelete(row); }}>
+                          <Trash2 className="size-3.5" aria-hidden /> Xóa
+                        </ActionBadge>
                       </div>
                     ) : (
                       <span className="text-muted">—</span>
@@ -292,7 +290,9 @@ export function ProjectBoard({
                 {loadError ? <p className="text-sm text-danger" role="alert">{loadError}</p> : <p className="text-sm text-muted">Đang tải hồ sơ...</p>}
               </div>
               <SheetFooter className="flex justify-end bg-white">
-                <Button type="button" variant="outline" onClick={() => open(null)}>Đóng</Button>
+                <Button type="button" variant="outline" onClick={() => open(null)}>
+                  <X className="size-4" aria-hidden /> Đóng
+                </Button>
               </SheetFooter>
             </div>
           ) : null}
@@ -325,10 +325,8 @@ export function ProjectBoard({
                     onEdit={() => open("sua", current.id)}
                     onQuote={() => router.push(`/bao-gia/moi?khach=${current.customerId}&cong-trinh=${current.id}`)}
                     onHangMuc={setHangMuc}
-                    onChiPhi={setChiPhi}
                     onSauThue={setSauThue}
                     addLineRef={addLineRef}
-                    addCostRef={addCostRef}
                   />
                 ) : targetId ? (
                   <p className="text-sm text-muted">Không thấy công trình trên trang này.</p>
@@ -345,14 +343,17 @@ export function ProjectBoard({
                 <div className="ml-auto flex flex-wrap justify-end gap-2">
                   {hangMuc && canEdit ? (
                     <>
-                      <Button type="button" variant="outline" onClick={() => addLineRef.current?.copy()}>Thêm từ copy hạng mục</Button>
-                      <Button type="button" onClick={() => addLineRef.current?.add()}>Thêm hạng mục mới</Button>
+                      <Button type="button" variant="outline" onClick={() => addLineRef.current?.copy()}>
+                        <ClipboardPaste className="size-4" aria-hidden /> Thêm từ copy hạng mục
+                      </Button>
+                      <Button type="button" onClick={() => addLineRef.current?.add()}>
+                        <Plus className="size-4" aria-hidden /> Thêm hạng mục mới
+                      </Button>
                     </>
                   ) : null}
-                  {chiPhi && canEdit ? (
-                    <Button type="button" onClick={() => addCostRef.current?.add()}>Thêm chi phí khác</Button>
-                  ) : null}
-                  <Button type="button" variant="outline" onClick={() => open(null)}>Đóng</Button>
+                  <Button type="button" variant="outline" onClick={() => open(null)}>
+                    <X className="size-4" aria-hidden /> Đóng
+                  </Button>
                 </div>
               </SheetFooter>
             </div>
@@ -370,8 +371,10 @@ export function ProjectBoard({
           </AlertDialogHeader>
           {deleteError ? <p className="text-sm text-danger" role="alert">{deleteError}</p> : null}
           <AlertDialogFooter>
-            <Button type="button" variant="outline" disabled={deleting} onClick={() => setPendingDelete(null)}>Đóng</Button>
-            <Button type="button" variant="destructive" disabled={deleting} onClick={() => void remove()}>{deleting ? "Đang xóa" : "Xóa"}</Button>
+            <Button type="button" variant="outline" disabled={deleting} onClick={() => setPendingDelete(null)}>
+              <X className="size-4" aria-hidden /> Đóng
+            </Button>
+            <Button type="button" variant="destructive" disabled={deleting} onClick={() => void remove()}><Trash2 className="size-4" aria-hidden /> {deleting ? "Đang xóa" : "Xóa"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

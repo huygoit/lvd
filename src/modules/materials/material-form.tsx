@@ -1,5 +1,7 @@
 "use client";
 
+import { Save, X } from "lucide-react";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { inputClass, selectClass } from "@/shared/components/controls";
@@ -164,8 +166,8 @@ export function MaterialForm({
         {error ? <p className="text-sm text-danger">{error}</p> : null}
       </div>
       <div className="sticky bottom-0 z-10 flex shrink-0 justify-end gap-2 border-t border-line bg-white px-5 py-3">
-        <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Đóng</Button>
-        <Button type="submit" disabled={busy}>{busy ? "Đang lưu" : "Lưu"}</Button>
+        <Button type="button" variant="outline" onClick={onClose} disabled={busy}><X className="size-4" aria-hidden /> Đóng</Button>
+        <Button type="submit" disabled={busy}><Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu"}</Button>
       </div>
     </form>
   );

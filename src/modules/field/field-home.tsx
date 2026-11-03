@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, PackageCheck, PackagePlus, Search, Trash2 } from "lucide-react";
+import { ClipboardList, PackageCheck, PackagePlus, Plus, Search, Trash2, X } from "lucide-react";
 import { ReceiveScreen } from "@/modules/field/field-receive";
 import { ProgressScreen, type ProgressReportCard } from "@/modules/field/field-progress";
 import { callApi } from "@/shared/client/api";
@@ -447,7 +447,7 @@ function RequestForm({
             ))}
           </div>
         ) : null}
-        <button type="button" className="text-sm font-semibold text-primary" onClick={addManual}>Thêm dòng tự nhập</button>
+        <button type="button" className="text-sm font-semibold text-primary" onClick={addManual}><Plus className="size-4" aria-hidden /> Thêm dòng tự nhập</button>
         {lines.map((line) => (
           <article key={line.key} className="space-y-2 rounded-xl bg-soft p-3">
             <div className="flex items-start justify-between gap-2">
@@ -482,7 +482,7 @@ function RequestForm({
       </label>
       {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
       <div className="sticky bottom-3 z-10 grid grid-cols-[auto_1fr] gap-2 rounded-2xl bg-page/95 py-1">
-        <Button type="button" variant="outline" className="h-12 rounded-2xl px-5" disabled={busy} onClick={onBack}>Đóng</Button>
+        <Button type="button" variant="outline" className="h-12 rounded-2xl px-5" disabled={busy} onClick={onBack}><X className="size-4" aria-hidden /> Đóng</Button>
         <Button type="button" className="h-12 rounded-2xl text-base" disabled={busy} onClick={() => void submit()}>{busy ? "Đang gửi" : "Gửi yêu cầu"}</Button>
       </div>
     </div>

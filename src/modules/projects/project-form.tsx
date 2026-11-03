@@ -1,5 +1,7 @@
 "use client";
 
+import { Save, X } from "lucide-react";
+
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -159,12 +161,12 @@ export function ProjectForm({
       </div>
       {error ? <p className="px-5 pb-2 text-sm text-danger" role="alert">{error}</p> : null}
       <SheetFooter className="flex flex-wrap justify-end gap-2 bg-white">
-        <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Đóng</Button>
+        <Button type="button" variant="outline" disabled={busy} onClick={onClose}><X className="size-4" aria-hidden /> Đóng</Button>
         {mode === "create" && customers.length > 0 && canQuote ? (
-          <Button type="submit" name="intent" value="quote" variant="outline" disabled={busy}>Lưu và lập báo giá</Button>
+          <Button type="submit" name="intent" value="quote" variant="outline" disabled={busy}><Save className="size-4" aria-hidden /> Lưu và lập báo giá</Button>
         ) : null}
         {mode === "edit" || customers.length > 0 ? (
-          <Button type="submit" name="intent" value="save" disabled={busy}>{busy ? "Đang lưu" : "Lưu"}</Button>
+          <Button type="submit" name="intent" value="save" disabled={busy}><Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu"}</Button>
         ) : null}
       </SheetFooter>
     </form>

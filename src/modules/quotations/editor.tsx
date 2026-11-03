@@ -1,5 +1,7 @@
 "use client";
 
+import { Plus, Save, Trash2, X } from "lucide-react";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -358,12 +360,12 @@ export function QuoteEditor({
     <>
       {flags.edit ? (
         <button type="button" className={buttonGhost} disabled={busy} onClick={saveOnly}>
-          Lưu nháp
+          <Save className="size-4" aria-hidden /> Lưu nháp
         </button>
       ) : null}
       {flags.submit ? (
         <button type="button" className={buttonPrimary} disabled={busy} onClick={() => act("gui-duyet", {}, true)}>
-          Lưu và gửi duyệt
+          <Save className="size-4" aria-hidden /> Lưu và gửi duyệt
         </button>
       ) : null}
       {flags.approve ? (
@@ -472,7 +474,7 @@ export function QuoteEditor({
           </div>
           {flags.edit ? (
             <button type="button" className={buttonGhost} onClick={() => { setDirty(true); setLines([...lines, blankLine(opening?.id ?? "", opening?.name ?? "", opening?.unit || "bộ")]); }}>
-              Thêm dòng
+              <Plus className="size-4" aria-hidden /> Thêm dòng
             </button>
           ) : null}
         </div>
@@ -549,7 +551,7 @@ export function QuoteEditor({
                   <td className="px-1 py-1">
                     {flags.edit && lines.length > 1 ? (
                       <button type="button" className="h-9 px-2 text-sm font-semibold text-danger" onClick={() => { setDirty(true); setLines(lines.filter((line) => line.key !== row.line.key)); }}>
-                        Xóa
+                        <Trash2 className="size-4" aria-hidden /> Xóa
                       </button>
                     ) : null}
                   </td>
@@ -608,7 +610,7 @@ export function QuoteEditor({
                   } catch (caught) {
                     setError(caught instanceof Error ? caught.message : "Không xóa được tệp.");
                   }
-                }}>Xóa</button>
+                }}><Trash2 className="size-4" aria-hidden /> Xóa</button>
               )}
             </li>
           ))}
@@ -677,7 +679,7 @@ export function QuoteEditor({
                 <p className="text-sm text-muted">Sau khi duyệt không sửa trực tiếp. Muốn đổi phải tạo phiên bản mới.</p>
                 <div className="flex gap-2">
                   <button type="button" className={buttonPrimary} disabled={busy} onClick={() => act("duyet")}>Duyệt</button>
-                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}>Hủy</button>
+                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}><X className="size-4" aria-hidden /> Hủy</button>
                 </div>
               </>
             ) : null}
@@ -691,7 +693,7 @@ export function QuoteEditor({
                   <button type="button" className={buttonPrimary} disabled={busy} onClick={() => act(panel === "sua" ? "yeu-cau-sua" : "phien-ban-moi", { reason }, panel === "ban-moi" && dirty)}>
                     Xác nhận
                   </button>
-                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}>Hủy</button>
+                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}><X className="size-4" aria-hidden /> Hủy</button>
                 </div>
               </>
             ) : null}
@@ -711,8 +713,8 @@ export function QuoteEditor({
                   </select>
                 </Field>
                 <div className="flex gap-2">
-                  <button type="button" className={buttonPrimary} disabled={busy} onClick={() => act("gui-khach", { recipientName, channel })}>Lưu lần gửi</button>
-                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}>Hủy</button>
+                  <button type="button" className={buttonPrimary} disabled={busy} onClick={() => act("gui-khach", { recipientName, channel })}><Save className="size-4" aria-hidden /> Lưu lần gửi</button>
+                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}><X className="size-4" aria-hidden /> Hủy</button>
                 </div>
               </>
             ) : null}
@@ -739,9 +741,9 @@ export function QuoteEditor({
                 {flags.exception ? <label className="flex gap-2 text-sm"><input type="checkbox" checked={ngoaiLe} onChange={(event) => setNgoaiLe(event.target.checked)} />Chấp thuận ngoài hạn, kèm lý do ít nhất 10 ký tự</label> : null}
                 <div className="flex gap-2">
                   <button type="button" className={buttonPrimary} disabled={busy} onClick={() => act("phan-hoi", { status: responseStatus, occurredOn, confirmerName, note: responseNote, ngoaiLe, thayThe })}>
-                    Lưu phản hồi
+                    <Save className="size-4" aria-hidden /> Lưu phản hồi
                   </button>
-                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}>Hủy</button>
+                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}><X className="size-4" aria-hidden /> Hủy</button>
                 </div>
               </>
             ) : null}
@@ -762,7 +764,7 @@ export function QuoteEditor({
                 {copyProjects.length === 0 ? <p className="text-sm text-muted">Khách này chưa có công trình. Hãy tạo công trình trước khi sao chép.</p> : null}
                 <div className="flex gap-2">
                   <button type="button" className={buttonPrimary} disabled={busy || !copyProject} onClick={() => act("sao-chep", { customerId: copyCustomer, projectId: copyProject })}>Tạo bản sao</button>
-                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}>Hủy</button>
+                  <button type="button" className={buttonGhost} onClick={() => setPanel("")}><X className="size-4" aria-hidden /> Hủy</button>
                 </div>
               </>
             ) : null}
@@ -780,7 +782,7 @@ export function QuoteEditor({
             router.push("/bao-gia");
           }}
         >
-          Đóng
+          <X className="size-4" aria-hidden /> Đóng
         </Button>
         {actions}
       </SheetFooter>

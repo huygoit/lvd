@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Database, Download, HardDrive, RotateCcw, Trash2 } from "lucide-react";
+import { Database, Download, HardDrive, RotateCcw, Trash2, X } from "lucide-react";
 import type { BackupCard } from "@/modules/system/backup";
 import { restorePhrase } from "@/modules/system/backup-phrase";
 import { Button } from "@/shared/components/ui/button";
@@ -195,7 +195,7 @@ export function BackupScreen({ initial }: { initial: BackupCard[] }) {
                     <Button type="button" variant="destructive" disabled={busyId === row.id || confirm.trim() !== restorePhrase} onClick={() => void restore(row.id)}>
                       {busyId === row.id ? "Đang khôi phục" : "Khôi phục bản này"}
                     </Button>
-                    <Button type="button" variant="outline" disabled={busyId === row.id} onClick={() => setRestoreId("")}>Đóng</Button>
+                    <Button type="button" variant="outline" disabled={busyId === row.id} onClick={() => setRestoreId("")}><X className="size-4" aria-hidden /> Đóng</Button>
                   </div>
                 </div>
               ) : null}

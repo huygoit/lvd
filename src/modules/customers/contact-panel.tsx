@@ -1,5 +1,7 @@
 "use client";
 
+import { Plus, Save, Trash2 } from "lucide-react";
+
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { callApi } from "@/shared/client/api";
@@ -75,7 +77,7 @@ export function ContactPanel({
               </span>
             </span>
             <button type="button" className="text-sm font-semibold text-danger" onClick={() => remove(item.id)}>
-              Xóa
+              <Trash2 className="size-4" aria-hidden /> Xóa
             </button>
           </li>
         ))}
@@ -98,7 +100,7 @@ export function ContactPanel({
           />
         </Field>
         <button className={buttonPrimary} disabled={busy}>
-          Thêm liên hệ
+          <Plus className="size-4" aria-hidden /> Thêm liên hệ
         </button>
         <label className="flex items-center gap-2 text-sm sm:col-span-3">
           <input name="isPrimary" type="checkbox" defaultChecked={contacts.length === 0} />
@@ -128,7 +130,7 @@ export function ArchiveButton({ id, onDone }: { id: string; onDone?: () => void 
   return (
     <span>
       <button type="button" className={buttonGhost} onClick={archive}>
-        Lưu trữ
+        <Save className="size-4" aria-hidden /> Lưu trữ
       </button>
       {error ? <span className="ml-2 text-sm text-danger">{error}</span> : null}
     </span>

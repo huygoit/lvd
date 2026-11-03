@@ -1,3 +1,4 @@
+import { Filter } from "lucide-react";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -50,7 +51,7 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
       </div>
       <form className="flex flex-wrap gap-2" action="/hop-dong">
         <input name="q" defaultValue={q} placeholder="Mã, số ký, công trình, điểm, ký hiệu" className={`${inputClass} max-w-sm`} />
-        <button className={buttonPrimary}>Lọc</button>
+        <button className={buttonPrimary}><Filter className="size-4" aria-hidden /> Lọc</button>
       </form>
       <div className={panelClass}>
         {rows.length === 0 ? <p className="p-4 text-sm text-muted">Chưa có hợp đồng.</p> : (

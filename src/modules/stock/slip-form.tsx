@@ -1,5 +1,7 @@
 "use client";
 
+import { BookCheck, Save, X } from "lucide-react";
+
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -359,7 +361,7 @@ export function SlipForm({
             </ul>
           ) : null}
         </div>
-        <div className="overflow-x-auto rounded-xl border border-line">
+        <div className="overflow-x-auto rounded-2xl border border-line">
           <table className="w-full text-sm">
             <thead className="bg-soft text-left text-xs text-muted">
               <tr>
@@ -461,9 +463,9 @@ export function SlipForm({
       <div className="sticky bottom-0 z-10 shrink-0 border-t border-line bg-white px-5 py-3">
         {error ? <p role="alert" className="mb-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm font-medium text-danger">{error}</p> : null}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Đóng</Button>
-          <Button type="button" variant="outline" onClick={() => save(false)} disabled={busy}>{busy ? "Đang lưu" : "Lưu nháp"}</Button>
-          <Button type="button" onClick={() => setAskPost(true)} disabled={busy}>Ghi sổ</Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}><X className="size-4" aria-hidden /> Đóng</Button>
+          <Button type="button" variant="outline" onClick={() => save(false)} disabled={busy}><Save className="size-4" aria-hidden /> {busy ? "Đang lưu" : "Lưu nháp"}</Button>
+          <Button type="button" onClick={() => setAskPost(true)} disabled={busy}><BookCheck className="size-4" aria-hidden /> Ghi sổ</Button>
         </div>
       </div>
       <AlertDialog open={askPost} onOpenChange={(next) => { if (!busy) setAskPost(next); }}>
@@ -475,8 +477,10 @@ export function SlipForm({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Hủy</AlertDialogCancel>
-            <Button type="button" disabled={busy} onClick={() => save(true)}>{busy ? "Đang ghi sổ" : "Ghi sổ"}</Button>
+            <AlertDialogCancel disabled={busy}><X className="size-4" aria-hidden /> Hủy</AlertDialogCancel>
+            <Button type="button" disabled={busy} onClick={() => save(true)}>
+              <BookCheck className="size-4" aria-hidden /> {busy ? "Đang ghi sổ" : "Ghi sổ"}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
