@@ -564,7 +564,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
   const [chonLoai, setChonLoai] = useState(false);
   const [taoTay, setTaoTay] = useState(false);
   // Popup xác nhận VAT khi đơn khong_ro.
-  const [choVat, setChoVat] = useState<(Order & { lines: RawLine[]; surcharges?: RawSurcharge[] }) | null>(null);
+  const [choVat, setChoVat] = useState<(Omit<Order, "lines" | "surcharges"> & { lines: RawLine[]; surcharges?: RawSurcharge[] }) | null>(null);
   const [vatGomChon, setVatGomChon] = useState<"" | "gom" | "chua">("");
   const [vatMucChon, setVatMucChon] = useState("8");
   const [dangXacNhanVat, setDangXacNhanVat] = useState(false);

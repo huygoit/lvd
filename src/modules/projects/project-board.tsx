@@ -131,7 +131,6 @@ export function ProjectBoard({
     setPresetCustomer(customerId);
     if (next !== "xem") {
       setHangMuc(false);
-      setChiPhi(false);
       setSauThue(null);
     }
     if (next === "them") setFormKey((value) => value + 1);
