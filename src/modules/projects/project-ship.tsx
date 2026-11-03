@@ -44,6 +44,8 @@ type LoiO = "" | "luc" | "hopDong";
 
 const o = "h-10 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-primary";
 const oLoi = "h-10 w-full rounded-lg border border-danger bg-white px-3 text-sm text-ink outline-none focus:border-danger";
+const oSl = "h-10 w-full rounded-lg border border-line px-3 text-right text-sm font-semibold tabular-nums outline-none focus:border-primary disabled:bg-soft";
+const oSlLoi = "h-10 w-full rounded-lg border border-danger bg-danger/5 px-3 text-right text-sm font-semibold tabular-nums text-danger outline-none focus:border-danger disabled:bg-soft";
 
 function so(milli: number) {
   return formatStockQty(milli);
@@ -53,6 +55,16 @@ function dai(mm: number) {
   if (!mm) return "";
   const met = Math.round(mm / 10) / 100;
   return Number.isInteger(met) ? `${met} m` : `${String(met).replace(".", ",")} m`;
+}
+
+// Đổi chuỗi SL form → milli (cùng quy ước API). null = không hợp lệ.
+function qtyMilliTuChuoi(value: string) {
+  const raw = value.trim().replace(",", ".");
+  const amount = Number(raw);
+  if (!raw || !Number.isFinite(amount) || amount <= 0) return null;
+  const qty = Math.round(amount * 1000);
+  if (qty <= 0 || qty > 1_000_000_000) return null;
+  return qty;
 }
 
 export function ProjectShip({
@@ -76,12 +88,16 @@ export function ProjectShip({
   const [luc, setLuc] = useState("");
   const [error, setError] = useState("");
   const [loiO, setLoiO] = useState<LoiO>("");
+  // Dòng vật tư đang lỗi SL — highlight + focus ô số lượng.
+  const [loiDongId, setLoiDongId] = useState("");
   const [saving, setSaving] = useState(false);
 
   const khoiLucRef = useRef<HTMLDivElement>(null);
   const gioRef = useRef<HTMLSelectElement>(null);
   const khoiHopDongRef = useRef<HTMLLabelElement>(null);
   const hopDongRef = useRef<HTMLSelectElement>(null);
+  const dongRefs = useRef(new Map<string, HTMLLabelElement>());
+  const qtyRefs = useRef(new Map<string, HTMLInputElement>());
 
   const hopTheoXuong = useMemo(
     () => (plan?.contracts ?? []).filter((item) => item.partnerId === xuong),
@@ -93,6 +109,7 @@ export function ProjectShip({
     setPlan(null);
     setError("");
     setLoiO("");
+    setLoiDongId("");
     setNoi("cong_trinh");
     setHopDongId("");
     setLuc("");
@@ -125,10 +142,29 @@ export function ProjectShip({
     });
   }
 
+  function nhayToiDong(lineId: string) {
+    requestAnimationFrame(() => {
+      dongRefs.current.get(lineId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => {
+        const oSlInput = qtyRefs.current.get(lineId);
+        oSlInput?.focus();
+        oSlInput?.select();
+      }, 280);
+    });
+  }
+
+  function danhDauLoiDong(lineId: string, msg: string) {
+    setError(msg);
+    setLoiDongId(lineId);
+    setLoiO("");
+    nhayToiDong(lineId);
+  }
+
   async function gui() {
     setSaving(true);
     setError("");
     setLoiO("");
+    setLoiDongId("");
     try {
       if (!luc) {
         const msg = "Chọn giờ, phút và ngày hàng tới.";
@@ -144,7 +180,24 @@ export function ProjectShip({
         nhayToiLoi("hopDong");
         return;
       }
-      const lines = rows.filter((row) => row.chon && row.qty.trim()).map((row) => ({ lineId: row.lineId, qty: row.qty }));
+      const chon = rows.filter((row) => row.chon && row.qty.trim());
+      if (chon.length === 0) {
+        setError("Chọn ít nhất một mã để giao.");
+        return;
+      }
+      // Validate SL trước khi gọi API — highlight đúng dòng vượt phần còn lại.
+      for (const row of chon) {
+        const milli = qtyMilliTuChuoi(row.qty);
+        if (milli === null) {
+          danhDauLoiDong(row.lineId, "Số lượng phải lớn hơn 0.");
+          return;
+        }
+        if (milli > row.remaining) {
+          danhDauLoiDong(row.lineId, `${row.code} chỉ còn ${so(row.remaining)} chưa giao.`);
+          return;
+        }
+      }
+      const lines = chon.map((row) => ({ lineId: row.lineId, qty: row.qty }));
       await callApi(`/api/cong-trinh/${projectId}/don-hang/${orderId}/giao`, {
         method: "POST",
         body: JSON.stringify({
@@ -158,7 +211,15 @@ export function ProjectShip({
       const nhan = noi === "kho" ? "kho công ty" : noi === "xuong" ? "xưởng" : "công trình";
       onDone(`Đã báo ${nhan} nhận hàng`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không giao được hàng.");
+      const msg = caught instanceof Error ? caught.message : "Không giao được hàng.";
+      setError(msg);
+      // API trả "C3329 chỉ còn …" → tìm dòng theo mã và nhảy tới ô SL.
+      const ma = msg.match(/^(\S+)\s+chỉ còn\b/)?.[1];
+      const dong = ma ? rows.find((row) => row.code === ma) : undefined;
+      if (dong) {
+        setLoiDongId(dong.lineId);
+        nhayToiDong(dong.lineId);
+      }
     } finally {
       setSaving(false);
     }
@@ -269,30 +330,56 @@ export function ProjectShip({
           {!plan ? <p className="text-sm text-muted">Đang tải các mã trên đơn...</p> : null}
           {plan && rows.length === 0 ? <p className="text-sm text-muted">Đơn chưa có mã vật tư để giao.</p> : null}
           <div className="space-y-2">
-            {rows.map((row) => (
-              <label key={row.lineId} className="grid gap-3 rounded-2xl border border-line bg-white px-3 py-3 sm:grid-cols-[auto_1fr_120px]">
-                <input type="checkbox" checked={row.chon} disabled={row.remaining <= 0} onChange={(event) => setRows((current) => current.map((item) => item.lineId === row.lineId ? { ...item, chon: event.target.checked } : item))} className="mt-1 size-4" />
-                <span>
-                  <span className="block text-sm font-semibold text-ink">{row.code} · {row.name}</span>
-                  <span className="mt-1 block text-xs text-muted">
-                    Đặt {so(row.ordered)} {row.unit}
-                    {row.lengthMm ? ` · ${dai(row.lengthMm)}` : ""}
-                    {row.site > 0 ? ` · Công trình ${so(row.site)}` : ""}
-                    {row.kho > 0 ? ` · Kho ${so(row.kho)}` : ""}
-                    {row.xuong > 0 ? ` · Xưởng ${so(row.xuong)}` : ""}
-                    {row.shipping > 0 ? ` · Đang giao ${so(row.shipping)}` : ""}
-                    {` · Còn ${so(row.remaining)}`}
+            {rows.map((row) => {
+              const dangLoi = loiDongId === row.lineId;
+              return (
+                <label
+                  key={row.lineId}
+                  ref={(node) => {
+                    if (node) dongRefs.current.set(row.lineId, node);
+                    else dongRefs.current.delete(row.lineId);
+                  }}
+                  className={cn(
+                    "grid gap-3 rounded-2xl border bg-white px-3 py-3 sm:grid-cols-[auto_1fr_120px]",
+                    dangLoi ? "border-danger bg-danger/5" : "border-line",
+                  )}
+                >
+                  <input type="checkbox" checked={row.chon} disabled={row.remaining <= 0} onChange={(event) => setRows((current) => current.map((item) => item.lineId === row.lineId ? { ...item, chon: event.target.checked } : item))} className="mt-1 size-4" />
+                  <span>
+                    <span className={cn("block text-sm font-semibold", dangLoi ? "text-danger" : "text-ink")}>{row.code} · {row.name}</span>
+                    <span className="mt-1 block text-xs text-muted">
+                      Đặt {so(row.ordered)} {row.unit}
+                      {row.lengthMm ? ` · ${dai(row.lengthMm)}` : ""}
+                      {row.site > 0 ? ` · Công trình ${so(row.site)}` : ""}
+                      {row.kho > 0 ? ` · Kho ${so(row.kho)}` : ""}
+                      {row.xuong > 0 ? ` · Xưởng ${so(row.xuong)}` : ""}
+                      {row.shipping > 0 ? ` · Đang giao ${so(row.shipping)}` : ""}
+                      {` · Còn ${so(row.remaining)}`}
+                    </span>
+                    {dangLoi ? (
+                      <span className="mt-1 block text-xs text-danger">Sửa số lượng ≤ phần còn chưa giao.</span>
+                    ) : null}
                   </span>
-                </span>
-                <input
-                  inputMode="decimal"
-                  value={row.qty}
-                  disabled={!row.chon || row.remaining <= 0}
-                  onChange={(event) => setRows((current) => current.map((item) => item.lineId === row.lineId ? { ...item, qty: event.target.value } : item))}
-                  className="h-10 rounded-lg border border-line px-3 text-right text-sm font-semibold tabular-nums outline-none focus:border-primary disabled:bg-soft"
-                />
-              </label>
-            ))}
+                  <input
+                    ref={(node) => {
+                      if (node) qtyRefs.current.set(row.lineId, node);
+                      else qtyRefs.current.delete(row.lineId);
+                    }}
+                    inputMode="decimal"
+                    value={row.qty}
+                    disabled={!row.chon || row.remaining <= 0}
+                    aria-invalid={dangLoi || undefined}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setRows((current) => current.map((item) => item.lineId === row.lineId ? { ...item, qty: value } : item));
+                      if (loiDongId === row.lineId) setLoiDongId("");
+                      if (error) setError("");
+                    }}
+                    className={dangLoi ? oSlLoi : oSl}
+                  />
+                </label>
+              );
+            })}
           </div>
         </div>
         <SheetFooter className="flex items-center justify-end gap-2">
