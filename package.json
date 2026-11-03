@@ -11,7 +11,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:ho-so": "tsx prisma/seed-khach-cong-trinh.ts",
     "db:xoa-rac": "tsx scripts/xoa-du-lieu-rac.ts",
-    "db:xoa-rac:chay": "tsx scripts/xoa-du-lieu-rac.ts --chay"
+    "db:xoa-rac:chay": "tsx scripts/xoa-du-lieu-rac.ts --chay",
+    "db:nap-chuc-danh": "tsx scripts/nap-chuc-danh.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1156.0",

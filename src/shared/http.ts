@@ -32,7 +32,9 @@ export async function run(action: () => Promise<unknown>) {
     unstable_rethrow(error);
     if (isAppError(error)) return json({ message: error.message, details: error.details ?? null }, error.status);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return json({ message: "Dữ liệu vừa bị trùng. Hãy tải lại rồi thử lại." }, 409);
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(", ") : String(error.meta?.target ?? "");
+      const chiTiet = target ? ` (trùng: ${target})` : "";
+      return json({ message: `Dữ liệu vừa bị trùng${chiTiet}. Hãy tải lại rồi thử lại.` }, 409);
     }
     console.error(error);
     return json({ message: "Không xử lý được yêu cầu." }, 500);

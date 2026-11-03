@@ -60,6 +60,18 @@ async function main() {
       create: { ...item, active: true },
     });
   }
+  // Danh mục chức danh — local đã có tay; VPS seed lần đầu / bổ sung thiếu.
+  const chucDanh = ["Giám đốc", "Phó giám đốc", "Trưởng phòng", "Kế toán", "Nhân viên"];
+  for (const [index, name] of chucDanh.entries()) {
+    const co = await prisma.jobTitle.findFirst({
+      where: { name: { equals: name, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (co) continue;
+    await prisma.jobTitle.create({
+      data: { name, sortOrder: index + 1, active: true },
+    });
+  }
   await seedDefaultRoles(prisma);
   await seedDefaultAccounts(prisma);
 }
