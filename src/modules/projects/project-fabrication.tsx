@@ -170,13 +170,13 @@ function hienKhoiLuongTuSo(so: number) {
   return so.toLocaleString("vi-VN", { maximumFractionDigits: 6 });
 }
 
-// Khối lượng m² từ công thức Rộng × Cao × SL (đơn vị input là mm).
+// Khối lượng m² từ công thức Rộng × Cao × SL (mm) — làm tròn 3 chữ số thập phân.
 function khoiLuongCongThuc(width: string, height: string, qty: string) {
-  const w = Number(width);
-  const h = Number(height);
+  const w = Number(String(width).replace(",", "."));
+  const h = Number(String(height).replace(",", "."));
   const q = parseSoThapPhan(qty);
   if (![w, h, q].every((n) => Number.isFinite(n) && n > 0)) return 0;
-  return Math.round((w * h * q) / 10_000) / 100;
+  return Math.round((w * h * q) / 1000) / 1000;
 }
 
 // Khối lượng dùng để tính thành tiền: ưu tiên giá trị nhập đè, nếu rỗng mới lấy công thức.

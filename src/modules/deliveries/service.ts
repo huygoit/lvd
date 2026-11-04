@@ -744,9 +744,9 @@ function tienTheoSlGiao(
   if (!line.unitPrice || qtyMilli <= 0) return 0;
   let tien = 0;
   if (kind === "kinh") {
+    // Cùng công thức đơn hàng: làm tròn(rộng × cao × tấm × giá / 1e6).
     const tam = qtyMilli / 1000;
-    const metVuong = Math.round((line.lengthMm * line.barCount * tam) / 10_000);
-    tien = Math.round((metVuong * line.unitPrice) / 100);
+    tien = Math.round((line.lengthMm * line.barCount * tam * line.unitPrice) / 1_000_000);
   } else if (kind === "nhom") {
     const ordered = line.barCount * 1000;
     if (ordered <= 0) return 0;
@@ -757,9 +757,11 @@ function tienTheoSlGiao(
     tien = Math.round((qtyMilli * line.unitPrice) / 1000);
   }
   if (vatMode === "khong_ro") return tien;
-  // Cùng quy tắc đơn: gom_vat + chưa tính VAT tổng dưới bảng → số đã gồm thuế.
-  if (!vatInline && !vatTongDaTinh && vatMode === "gom_vat") return tien;
+  // Giá đã gồm VAT → không cộng thêm. Footer thuế tổng không đổi điều này.
+  if (!vatInline && vatMode === "gom_vat") return tien;
   if (!tien || !line.taxBps) return tien;
+  // chua_vat + footer đã có thuế tổng: tiền theo SL chỉ lấy net (thuế cộng ở cấp đơn).
+  if (vatTongDaTinh) return tien;
   return tien + Math.round((tien * line.taxBps) / 10000);
 }
 

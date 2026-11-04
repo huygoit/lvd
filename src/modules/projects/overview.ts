@@ -53,6 +53,7 @@ export async function readProjectOverview(user: User, projectId: string): Promis
         vatMode: true,
         vatInline: true,
         vatTongDaTinh: true,
+        vatTongTien: true,
         lines: { select: { totalGrams: true, quantityMilli: true, unitPrice: true, lengthMm: true, barCount: true, taxBps: true } },
         surcharges: { select: { quantityMilli: true, unitPrice: true, taxBps: true } },
       },
@@ -82,6 +83,11 @@ export async function readProjectOverview(user: User, projectId: string): Promis
   const tienDonHang = donHang.reduce((tong, don) => {
     const hang = don.lines.reduce((dong, line) => dong + orderLinePayable(don.kind, line, don.vatMode, don.vatInline, don.vatTongDaTinh), 0);
     const phu = don.surcharges.reduce((dong, row) => dong + orderSurchargePayable(row, don.vatMode, don.vatInline, don.vatTongDaTinh), 0);
+    // Footer thuế + giá chưa gồm VAT → cộng thuế tổng. Giá đã gồm → không cộng thêm.
+    const gomVat = don.vatMode === "gom_vat" && !don.vatInline;
+    if (don.vatTongDaTinh && don.vatTongTien > 0 && !gomVat) {
+      return tong + hang + phu + don.vatTongTien;
+    }
     return tong + hang + phu;
   }, 0);
   const thay = thayChiPhiChung(user);

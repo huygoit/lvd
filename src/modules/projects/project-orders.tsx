@@ -65,8 +65,10 @@ type Order = {
   headerNote: string;
   vatMode: "gom_vat" | "chua_vat" | "khong_ro";
   vatInline: boolean;
-  // Dưới bảng PDF đã tính VAT tổng → không suy ngược thành tiền dòng.
+  // Dưới bảng PDF đã tính VAT tổng → không suy ngược; không hỏi popup.
   vatTongDaTinh: boolean;
+  // Số thuế GTGT tổng trên PDF (đồng). Ưu tiên hiển thị khi > 0.
+  vatTongTien: number;
   vatEvidence: string;
   depositPercent: number;
   depositAmount: number;
@@ -264,25 +266,38 @@ const kindMeta = {
   bo_cai: { icon: Boxes, hint: "Số lượng, đơn giá, VAT", tone: "bg-success/10 text-success" },
 } as const;
 
+function parseSizeMm(raw: string) {
+  const text = raw.replace(/\s/g, "");
+  if (!text) return 0;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(text) || /^\d+,\d+$/.test(text)) {
+    return Number(text.replace(/\./g, "").replace(",", ".")) || 0;
+  }
+  return Number(text.replace(",", ".")) || 0;
+}
+
 function glassM2(line: Line) {
-  const width = Number(line.widthMm.replace(/[.,\s]/g, ""));
-  const height = Number(line.heightMm.replace(/[.,\s]/g, ""));
+  const width = parseSizeMm(line.widthMm);
+  const height = parseSizeMm(line.heightMm);
   const sheets = Number(line.quantity.replace(/\s/g, "").replace(",", "."));
   if (!width || !height || !sheets) return null;
-  return Math.round((width * height * sheets) / 10_000) / 100;
+  // Hiển thị m² làm tròn 3 chữ số thập phân (khớp PDF).
+  return Math.round((width * height * sheets) / 1000) / 1000;
 }
 
 function glassArea(line: Line) {
   const area = glassM2(line);
   if (area === null) return "—";
-  return area.toFixed(2).replace(/\.?0+$/, "").replace(".", ",");
+  return area.toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
 }
 
 function glassMoney(line: Line) {
-  const area = glassM2(line);
+  const width = parseSizeMm(line.widthMm);
+  const height = parseSizeMm(line.heightMm);
+  const sheets = Number(line.quantity.replace(/\s/g, "").replace(",", ".")) || 0;
   const price = Number(line.unitPrice.replace(/\./g, "")) || 0;
-  if (area === null || !price) return null;
-  return Math.round((Math.round(area * 100) * price) / 100);
+  if (!width || !height || !sheets || !price) return null;
+  // Cùng công thức server: làm tròn(rộng × cao × tấm × giá / 1e6).
+  return Math.round((width * height * sheets * price) / 1_000_000);
 }
 
 function soNhom(value: string) {
@@ -318,18 +333,19 @@ function tienDong(kind: Order["kind"], line: Line) {
   return Math.round(sl * gia);
 }
 
-// Suy ngược chỉ khi gom_vat + không cột VAT dòng + dưới bảng chưa tính VAT tổng.
+// Giá dòng đã gồm VAT → suy ngược khi hiện gốc/thuế. Footer thuế tổng không đổi điều này.
 function donGomVat(order: Pick<Order, "vatMode" | "vatInline" | "vatTongDaTinh">) {
   if (order.vatInline) return false;
-  if (order.vatTongDaTinh) return false;
   return order.vatMode === "gom_vat";
 }
 
 function nhanVatDon(order: Pick<Order, "vatMode" | "vatInline" | "vatTongDaTinh">) {
   if (order.vatInline) return "VAT từng dòng";
   if (order.vatMode === "khong_ro") return "Chưa xác nhận VAT";
-  if (order.vatTongDaTinh) return "Đơn đã tính VAT tổng (không suy ngược)";
-  return order.vatMode === "chua_vat" ? "Đơn hàng chưa bao gồm VAT" : "Đơn hàng bao gồm VAT";
+  if (order.vatMode === "gom_vat") {
+    return order.vatTongDaTinh ? "Đơn giá đã gồm VAT · thuế tổng lấy từ PDF" : "Đơn hàng bao gồm VAT";
+  }
+  return order.vatTongDaTinh ? "Chưa gồm VAT · thuế tổng lấy từ PDF" : "Đơn hàng chưa bao gồm VAT";
 }
 
 // Số tính từ đơn giá trên dòng. Với đơn gồm VAT đây là số sau thuế (gross).
@@ -437,6 +453,11 @@ function tongThanhToanDon(order: Order) {
   const giaGom = donGomVat(order);
   const hang = congTienThue(order.kind, order.lines, giaGom);
   const phu = congPhuThu(order.surcharges, giaGom);
+  // Chỉ cộng thuế tổng khi giá dòng chưa gồm VAT.
+  if (order.vatTongDaTinh && order.vatTongTien > 0 && !giaGom) {
+    const truoc = hang.truocThue + phu.truocThue;
+    return { thanhToan: truoc + order.vatTongTien, coTien: hang.coTien || phu.coTien || true };
+  }
   return {
     thanhToan: hang.thanhToan + phu.thanhToan,
     coTien: hang.coTien || phu.coTien,
@@ -457,9 +478,14 @@ function orderStats(order: Order) {
   const hang = congTienThue(order.kind, order.lines, giaGom);
   const phu = congPhuThu(order.surcharges, giaGom);
   const truocThue = hang.truocThue + phu.truocThue;
-  const tax = hang.tax + phu.tax;
-  const thanhToan = hang.thanhToan + phu.thanhToan;
-  const coTien = hang.coTien || phu.coTien;
+  // Có thuế tổng trên PDF → hiện đúng số thuế đó.
+  // Tổng thanh toán: giá đã gồm VAT → tổng dòng (không cộng thêm); chưa gồm → dòng + thuế PDF.
+  const taxTuPdf = order.vatTongDaTinh && order.vatTongTien > 0;
+  const tax = taxTuPdf ? order.vatTongTien : hang.tax + phu.tax;
+  const thanhToan = taxTuPdf && !giaGom
+    ? truocThue + tax
+    : hang.thanhToan + phu.thanhToan;
+  const coTien = hang.coTien || phu.coTien || taxTuPdf;
   const tienThue = ["Tiền thuế", coTien ? `${formatUnitPrice(tax)} ₫` : "—"] as const;
   const tongTt = ["Tổng thanh toán", coTien ? `${formatUnitPrice(thanhToan)} ₫` : "—"] as const;
   if (order.kind === "kinh") {
@@ -470,10 +496,10 @@ function orderStats(order: Order) {
       const text = glassArea(line);
       if (text !== "—") area += Number(text.replace(",", "."));
     }
-    const rounded = Math.round(area * 100) / 100;
+    const rounded = Math.round(area * 1000) / 1000;
     return [
       ["Tấm", String(sheets)],
-      ["m²", rounded.toFixed(2).replace(/\.?0+$/, "").replace(".", ",")],
+      ["m²", rounded.toFixed(3).replace(/\.?0+$/, "").replace(".", ",")],
       ["Thành tiền", coTien ? `${formatUnitPrice(truocThue)} ₫` : "—"],
       tienThue,
       tongTt,
@@ -607,12 +633,13 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
     setDirty(false);
   }
 
-  // Đơn nạp PDF chưa xác nhận VAT → hiện popup.
-  // Bỏ qua: đơn tay, đã xác nhận, hoặc có cột VAT từng dòng (mặc định chua_vat).
+  // Chỉ hỏi khi PDF không rõ đã gồm VAT hay chưa (khong_ro).
+  // Đã nhận diện gom/chua, có % trên tệp, cột VAT dòng, thuế tổng → lấy luôn, không bắt chọn lại.
   function canHoiVat(order: Order) {
-    if (order.vatEvidence === "nguoi_dung_xac_nhan" || order.vatEvidence === "tao_tay") return false;
+    if (order.vatEvidence === "nguoi_dung_xac_nhan" || order.vatEvidence === "tao_tay" || order.vatEvidence === "pdf_vat_tong" || order.vatEvidence === "pdf_vat_mode") return false;
     if (order.vatInline) return false;
-    return order.vatMode === "khong_ro" || order.vatMode === "gom_vat" || order.vatMode === "chua_vat";
+    if (order.vatTongDaTinh) return false;
+    return order.vatMode === "khong_ro";
   }
 
   function moDonHoacHoiVat(order: Order, lines: RawLine[], surcharges: RawSurcharge[] = []) {
@@ -1229,7 +1256,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                       <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={themPhuThu}><Plus className="size-4" />Thêm phụ thu</Button>
                       <label className="flex items-center gap-2 text-sm text-muted">
                         <Percent className="size-3.5 shrink-0" aria-hidden />
-                        <span>{donGomVat(current) ? "VAT tách ngược" : current.vatTongDaTinh ? "VAT tổng đã tính" : "VAT cả đơn"}</span>
+                        <span>{donGomVat(current) ? "VAT tách ngược" : "VAT cộng thêm"}</span>
                         <select
                           value={vatChung}
                           onChange={(event) => doiVatChung(event.target.value)}
@@ -1238,8 +1265,11 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                           {vatTuyChon.map((muc) => <option key={muc} value={muc}>{muc}%</option>)}
                         </select>
                         {donGomVat(current) ? <span className="text-xs text-muted">Thành tiền trên đơn đã gồm thuế — suy ngược gốc/thuế</span> : null}
-                        {current.vatTongDaTinh && !donGomVat(current) ? (
-                          <span className="text-xs text-muted">Dưới bảng đã có thuế tổng — thành tiền × VAT%, không suy ngược</span>
+                        {current.vatTongDaTinh && current.vatTongTien > 0 ? (
+                          <span className="text-xs text-muted">
+                            Thuế tổng PDF: {formatUnitPrice(current.vatTongTien)} ₫
+                            {donGomVat(current) ? " (đã gồm trong thành tiền — không cộng thêm)" : " (cộng vào tổng)"}
+                          </span>
                         ) : null}
                         {current.vatInline ? <span className="text-xs text-muted">Đổi footer sẽ áp cho mọi dòng</span> : null}
                       </label>

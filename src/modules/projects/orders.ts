@@ -86,11 +86,21 @@ function unitOf(kind: string, value: unknown) {
   return unit;
 }
 
-function whole(value: unknown) {
-  const raw = text(value).replace(/\s/g, "").replace(/[.,]/g, "");
+// Kích thước mm: nhận 1250, 1.250, 387.5, 387,5 — làm tròn 0,1 mm.
+function sizeMm(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.round(value * 10) / 10;
+  }
+  const raw = text(value).replace(/\s/g, "");
   if (!raw) return 0;
-  if (!/^\d+$/.test(raw)) throw new AppError("Kích thước không hợp lệ.", 400);
-  return Number(raw);
+  let amount = NaN;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw) || /^\d+,\d+$/.test(raw)) {
+    amount = Number(raw.replace(/\./g, "").replace(",", "."));
+  } else {
+    amount = Number(raw.replace(",", "."));
+  }
+  if (!Number.isFinite(amount) || amount < 0) throw new AppError("Kích thước không hợp lệ.", 400);
+  return Math.round(amount * 10) / 10;
 }
 
 function kindLabel(kind: string) {
@@ -286,18 +296,18 @@ function supplierBank(bankName: string, accountNumber: string) {
 export function orderLineAmount(kind: string, line: { totalGrams: number; quantityMilli: number; unitPrice: number; lengthMm: number; barCount: number }) {
   if (!line.unitPrice) return 0;
   if (kind === "kinh") {
+    // Khớp Excel/PDF: làm tròn(rộng_mm × cao_mm × số_tấm × đơn_giá / 1e6).
     const tam = line.quantityMilli / 1000;
-    const metVuong = Math.round((line.lengthMm * line.barCount * tam) / 10_000);
-    return Math.round((metVuong * line.unitPrice) / 100);
+    return Math.round((line.lengthMm * line.barCount * tam * line.unitPrice) / 1_000_000);
   }
   const base = kind === "nhom" ? line.totalGrams : line.quantityMilli;
   return Math.round(base * line.unitPrice / 1000);
 }
 
-// Suy ngược chỉ khi: giá gồm VAT + không cột VAT dòng + dưới bảng CHƯA tính VAT tổng.
-export function donGomVat(vatMode: string, vatInline: boolean, vatTongDaTinh = false) {
+// Giá/thành tiền dòng đã gồm VAT → suy ngược khi hiển thị gốc/thuế dòng.
+// vatTongDaTinh chỉ nói footer có tách thuế tổng — không đổi việc giá dòng đã gồm hay chưa.
+export function donGomVat(vatMode: string, vatInline: boolean, _vatTongDaTinh = false) {
   if (vatInline) return false;
-  if (vatTongDaTinh) return false;
   return vatMode === "gom_vat";
 }
 
@@ -356,6 +366,7 @@ function present(order: {
   vatMode: string;
   vatInline: boolean;
   vatTongDaTinh: boolean;
+  vatTongTien: number;
   vatEvidence: string;
   depositPercentBps?: number;
   depositAmount?: number;
@@ -393,6 +404,12 @@ function present(order: {
   const phuThu = order.surcharges ?? [];
   const tienDong = order.lines.reduce((sum, line) => sum + orderLinePayable(order.kind, line, order.vatMode, order.vatInline, order.vatTongDaTinh), 0);
   const tienPhu = phuThu.reduce((sum, row) => sum + orderSurchargePayable(row, order.vatMode, order.vatInline, order.vatTongDaTinh), 0);
+  // Footer có thuế tổng + giá dòng CHƯA gồm VAT → cộng vatTongTien.
+  // Footer có thuế tổng + giá dòng ĐÃ gồm VAT → tổng = tổng dòng (đã gồm), không cộng thêm thuế.
+  const gomVat = donGomVat(order.vatMode, order.vatInline, order.vatTongDaTinh);
+  const tongTien = order.vatTongDaTinh && (order.vatTongTien ?? 0) > 0 && !gomVat
+    ? tienDong + tienPhu + order.vatTongTien
+    : tienDong + tienPhu;
   return {
     id: order.id,
     code: order.code,
@@ -420,13 +437,14 @@ function present(order: {
     vatMode: order.vatMode,
     vatInline: order.vatInline,
     vatTongDaTinh: order.vatTongDaTinh,
+    vatTongTien: order.vatTongTien ?? 0,
     vatEvidence: order.vatEvidence,
     depositPercent: (order.depositPercentBps ?? 0) / 100,
     depositAmount: order.depositAmount ?? 0,
     depositNote: order.depositNote ?? "",
     fileName: order.fileName,
     createdOn: ngay(order.createdAt),
-    amount: tienDong + tienPhu,
+    amount: tongTien,
     lines: order.lines.map((line) => ({
       id: line.id,
       sortOrder: line.sortOrder,
@@ -541,6 +559,7 @@ export async function createManualProjectOrder(user: User, projectId: string, ki
         vatMode: "chua_vat",
         vatInline: false,
         vatTongDaTinh: false,
+        vatTongTien: 0,
         vatEvidence: "tao_tay",
       },
       include,
@@ -566,9 +585,16 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
   if (!kept.length) throw new AppError("Không bóc được dòng hàng nào trong tệp.", 400);
   const vatInline = parsed.vatInline;
   const vatTongDaTinh = parsed.vatTongDaTinh;
-  // Có cột VAT từng dòng → giá dòng là net, luôn chua_vat, không hỏi popup.
-  // Không cột: giữ vatMode từ PDF (khong_ro / gom / chua) để UI xác nhận.
+  const vatTongTien = parsed.vatTongTien;
+  // Cột VAT dòng → net. Còn lại giữ vatMode PDF (gom_vat nếu đơn giá đã gồm thuế).
+  // vatTongDaTinh chỉ là footer tách thuế — không ép chua_vat (tránh cộng thuế hai lần).
   const vatMode: VatMode = vatInline ? "chua_vat" : parsed.vatMode;
+  // Đã rõ mode/thuế trên PDF → chốt luôn, chỉ hỏi khi khong_ro.
+  const vatEvidence = vatTongDaTinh
+    ? "pdf_vat_tong"
+    : vatMode === "gom_vat" || vatMode === "chua_vat"
+      ? "pdf_vat_mode"
+      : parsed.vatEvidence;
   // Không có cột VAT từng dòng: gợi ý 8% (user có thể đổi khi xác nhận khong_ro).
   const shaped = (await matchLines(parsed.kind, kept.map((line, index) => fromPdf(parsed.kind, line, index + 1)))).map((line) => (
     !vatInline && !line.taxBps ? { ...line, taxBps: 800 } : line
@@ -611,7 +637,8 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
         vatMode,
         vatInline,
         vatTongDaTinh,
-        vatEvidence: parsed.vatEvidence,
+        vatTongTien,
+        vatEvidence,
         depositPercentBps: Math.round(parsed.depositPercent * 100),
         depositAmount: parsed.depositAmount,
         depositNote: parsed.depositNote,
@@ -652,8 +679,8 @@ function cleanLine(kind: string, input: LineInput, sortOrder: number, coTep: boo
   if (!materialCode) throw new AppError(kind === "kinh" ? "Cần nhập ký hiệu." : "Cần nhập mã hàng.", 400);
   if (!name) throw new AppError("Cần nhập tên hàng.", 400);
   if (kind === "kinh") {
-    const width = whole(input.widthMm);
-    const height = whole(input.heightMm);
+    const width = sizeMm(input.widthMm);
+    const height = sizeMm(input.heightMm);
     if (width <= 0 || height <= 0) throw new AppError(`${materialCode} thiếu kích thước.`, 400);
     return {
       sortOrder,
@@ -753,10 +780,16 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
   if (rawTaxCode.trim() && !contact.supplierTaxCode) throw new AppError("Mã số thuế không đúng.", 400);
   const headerNote = given(input.headerNote, current.headerNote);
   if (!supplierName) throw new AppError("Đơn hàng không hợp lệ. Thiếu tên nhà cung cấp.", 400);
-  // Đơn nạp PDF chưa qua popup xác nhận VAT thì chưa cho lưu.
-  // Có cột VAT từng dòng (vatInline) thì đã chốt chua_vat, không cần hỏi.
-  const daXacNhanVat = current.vatEvidence === "nguoi_dung_xac_nhan" || current.vatEvidence === "tao_tay";
-  if (!daXacNhanVat && !current.vatInline) {
+  // Chỉ chặn lưu khi PDF khong_ro chưa được user xác nhận.
+  // Đã chốt: cột VAT dòng, thuế tổng PDF, nhận diện gom/chua, đơn tay, hoặc user xác nhận.
+  const daXacNhanVat =
+    current.vatEvidence === "nguoi_dung_xac_nhan"
+    || current.vatEvidence === "tao_tay"
+    || current.vatEvidence === "pdf_vat_tong"
+    || current.vatEvidence === "pdf_vat_mode"
+    || current.vatMode === "gom_vat"
+    || current.vatMode === "chua_vat";
+  if (!daXacNhanVat && !current.vatInline && !current.vatTongDaTinh) {
     throw new AppError("Cần xác nhận mức VAT của đơn trước khi lưu.", 400);
   }
   const deposit = cleanDeposit(input, {
@@ -923,14 +956,22 @@ export async function confirmProjectOrderVat(
   await visible(user, projectId);
   const current = await prisma.projectOrder.findFirst({
     where: { id: orderId, projectId },
-    select: { id: true, code: true, vatMode: true, vatInline: true, vatEvidence: true },
+    select: { id: true, code: true, vatMode: true, vatInline: true, vatTongDaTinh: true, vatEvidence: true },
   });
   if (!current) throw new AppError("Không tìm thấy đơn hàng.", 404);
-  if (current.vatEvidence === "nguoi_dung_xac_nhan" || current.vatEvidence === "tao_tay") {
+  if (
+    current.vatEvidence === "nguoi_dung_xac_nhan"
+    || current.vatEvidence === "tao_tay"
+    || current.vatEvidence === "pdf_vat_tong"
+    || current.vatEvidence === "pdf_vat_mode"
+  ) {
     throw new AppError("Đơn này đã xác nhận VAT.", 400);
   }
   if (current.vatInline) {
     throw new AppError("Đơn có VAT từng dòng (chưa gồm VAT), không cần xác nhận thêm.", 400);
+  }
+  if (current.vatTongDaTinh) {
+    throw new AppError("Đơn đã có thuế tổng trên PDF, không cần xác nhận thêm.", 400);
   }
 
   const vatPercent = Math.round(Math.max(0, Number(text(input.vatPercent).replace(",", ".")) || 0));
