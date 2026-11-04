@@ -65,6 +65,8 @@ type Order = {
   headerNote: string;
   vatMode: "gom_vat" | "chua_vat" | "khong_ro";
   vatInline: boolean;
+  // Dưới bảng PDF đã tính VAT tổng → không suy ngược thành tiền dòng.
+  vatTongDaTinh: boolean;
   vatEvidence: string;
   depositPercent: number;
   depositAmount: number;
@@ -316,15 +318,17 @@ function tienDong(kind: Order["kind"], line: Line) {
   return Math.round(sl * gia);
 }
 
-// Chỉ gom_vat mới tách ngược. khong_ro chờ popup xác nhận — không tự đoán.
-function donGomVat(order: Pick<Order, "vatMode" | "vatInline">) {
+// Suy ngược chỉ khi gom_vat + không cột VAT dòng + dưới bảng chưa tính VAT tổng.
+function donGomVat(order: Pick<Order, "vatMode" | "vatInline" | "vatTongDaTinh">) {
   if (order.vatInline) return false;
+  if (order.vatTongDaTinh) return false;
   return order.vatMode === "gom_vat";
 }
 
-function nhanVatDon(order: Pick<Order, "vatMode" | "vatInline">) {
+function nhanVatDon(order: Pick<Order, "vatMode" | "vatInline" | "vatTongDaTinh">) {
   if (order.vatInline) return "VAT từng dòng";
   if (order.vatMode === "khong_ro") return "Chưa xác nhận VAT";
+  if (order.vatTongDaTinh) return "Đơn đã tính VAT tổng (không suy ngược)";
   return order.vatMode === "chua_vat" ? "Đơn hàng chưa bao gồm VAT" : "Đơn hàng bao gồm VAT";
 }
 
@@ -1225,7 +1229,7 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                       <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={themPhuThu}><Plus className="size-4" />Thêm phụ thu</Button>
                       <label className="flex items-center gap-2 text-sm text-muted">
                         <Percent className="size-3.5 shrink-0" aria-hidden />
-                        <span>{donGomVat(current) ? "VAT tách ngược" : "VAT cả đơn"}</span>
+                        <span>{donGomVat(current) ? "VAT tách ngược" : current.vatTongDaTinh ? "VAT tổng đã tính" : "VAT cả đơn"}</span>
                         <select
                           value={vatChung}
                           onChange={(event) => doiVatChung(event.target.value)}
@@ -1233,7 +1237,10 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                         >
                           {vatTuyChon.map((muc) => <option key={muc} value={muc}>{muc}%</option>)}
                         </select>
-                        {donGomVat(current) ? <span className="text-xs text-muted">Thành tiền trên đơn đã gồm thuế</span> : null}
+                        {donGomVat(current) ? <span className="text-xs text-muted">Thành tiền trên đơn đã gồm thuế — suy ngược gốc/thuế</span> : null}
+                        {current.vatTongDaTinh && !donGomVat(current) ? (
+                          <span className="text-xs text-muted">Dưới bảng đã có thuế tổng — thành tiền × VAT%, không suy ngược</span>
+                        ) : null}
                         {current.vatInline ? <span className="text-xs text-muted">Đổi footer sẽ áp cho mọi dòng</span> : null}
                       </label>
                     </div>

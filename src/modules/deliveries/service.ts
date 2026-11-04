@@ -739,6 +739,7 @@ function tienTheoSlGiao(
   qtyMilli: number,
   vatMode: string,
   vatInline: boolean,
+  vatTongDaTinh = false,
 ) {
   if (!line.unitPrice || qtyMilli <= 0) return 0;
   let tien = 0;
@@ -756,7 +757,8 @@ function tienTheoSlGiao(
     tien = Math.round((qtyMilli * line.unitPrice) / 1000);
   }
   if (vatMode === "khong_ro") return tien;
-  if (!vatInline && vatMode === "gom_vat") return tien;
+  // Cùng quy tắc đơn: gom_vat + chưa tính VAT tổng dưới bảng → số đã gồm thuế.
+  if (!vatInline && !vatTongDaTinh && vatMode === "gom_vat") return tien;
   if (!tien || !line.taxBps) return tien;
   return tien + Math.round((tien * line.taxBps) / 10000);
 }
@@ -771,6 +773,7 @@ export async function listOrderDeliveryHistory(user: User, projectId: string, or
       kind: true,
       vatMode: true,
       vatInline: true,
+      vatTongDaTinh: true,
       project: { select: { id: true, code: true, name: true, ownerId: true } },
       lines: {
         select: {
@@ -852,7 +855,7 @@ export async function listOrderDeliveryHistory(user: User, projectId: string, or
         const goc = dong.orderLineId ? dongDon.get(dong.orderLineId) : undefined;
         // Giá trị theo SL trên phiếu giao (documentQty).
         const amount = goc
-          ? tienTheoSlGiao(order.kind, goc, dong.documentQty, order.vatMode, order.vatInline)
+          ? tienTheoSlGiao(order.kind, goc, dong.documentQty, order.vatMode, order.vatInline, order.vatTongDaTinh)
           : 0;
         return {
           id: dong.id,

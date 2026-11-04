@@ -45,6 +45,9 @@ export type PdfOrder = {
   vatMode: VatMode;
   // Bảng PDF có cột VAT từng dòng hay không. Có thì tin dữ liệu dòng, không ép cả đơn.
   vatInline: boolean;
+  // Dưới bảng đã có khối tính VAT tổng (tiền hàng / thuế GTGT / tổng sau thuế) hay chưa.
+  // true → không suy ngược thành tiền dòng; lấy thành tiền × VAT%.
+  vatTongDaTinh: boolean;
   // Câu/chỗ dùng để nhận diện vatMode. Hiển thị tooltip khi cần.
   vatEvidence: string;
   // Phụ thu / phí cộng thêm bóc ngoài bảng hàng.
@@ -69,7 +72,7 @@ supplierWebsite là website bên bán. supplierEmail là email bên bán.
 supplierTaxCode là mã số thuế bên bán. Không thấy thì để chuỗi rỗng. Không lấy số tài khoản ngân hàng.
 supplierRepresentativeName là tên người ở khối chữ ký của bên bán, tức khối không ghi Bên mua và không phải Khách hàng. Nếu khối đó chỉ có tên công ty, không có tên người, để chuỗi rỗng.
 supplierRepresentativeTitle là chức vụ ghi cạnh tên người đó. Không có tên người thì để chuỗi rỗng.
-vatMode và vatInline là hai trường độc lập. Không suy vatMode chỉ vì bảng có hoặc không có cột VAT.
+vatMode, vatInline và vatTongDaTinh là ba trường độc lập. Không suy vatMode chỉ vì bảng có hoặc không có cột VAT.
 vatInline = true khi bảng hàng có cột VAT/thuế GTGT từng dòng. Khi đó vatPercent từng dòng lấy đúng số trên cột đó. Không có cột thì false, vatPercent dòng để 0.
 Khi vatInline = true thì vatMode luôn là chua_vat (giá/thành tiền trên cột là trước thuế, thuế nằm cột riêng) — không chọn gom_vat hay khong_ro.
 Khi vatInline = false, vatMode theo câu ghi chú trên đơn (đầu trang, cuối bảng, chú thích dưới tổng tiền), theo ý nghĩa chứ không chỉ khớp cụm từ.
@@ -78,6 +81,11 @@ VAT và GTGT (thuế giá trị gia tăng) là cùng một loại thuế. Câu d
 - chua_vat: giá/thành tiền chưa gồm thuế. Ví dụ "chưa bao gồm VAT", "chưa bao gồm GTGT", "chưa có VAT", "chưa có GTGT", "không bao gồm VAT", "không bao gồm GTGT", "không có VAT", "không có GTGT", "VAT tính riêng", "GTGT tính riêng", "cộng VAT", "cộng GTGT" và câu cùng nghĩa.
 - khong_ro: không thấy dấu hiệu rõ. Không đoán.
 vatEvidence là đúng một câu ngắn trích từ đơn dùng để chọn vatMode. Không thấy thì chuỗi rỗng.
+
+vatTongDaTinh = true khi DƯỚI bảng hàng (khối tổng / cuối trang) đã tách sẵn các dòng tính thuế tổng: ví dụ "Tiền hàng", "Thuế GTGT", "Tiền thuế", "VAT", "Thành tiền sau thuế", "Tổng thanh toán" kèm số thuế riêng — tức đơn đã tính VAT tổng, không chỉ ghi chú "giá gồm VAT".
+vatTongDaTinh = false khi dưới bảng không có khối tính thuế tổng như vậy (chỉ có tổng cộng một số, hoặc không có dòng thuế).
+Lưu ý: cột VAT từng dòng trong bảng (vatInline) khác với khối tính VAT tổng dưới bảng (vatTongDaTinh). Có thể vatInline=false mà vatTongDaTinh=true.
+Khi vatTongDaTinh = true, thành tiền/đơn giá dòng coi là trước thuế để nhân VAT — hệ thống sẽ không suy ngược gross.
 
 surcharges là mảng các khoản phí cộng thêm ngoài danh mục hàng hóa chính — nhận theo ngữ nghĩa, không phụ thuộc một cụm chữ cố định. Đó là khoản tính thêm trên đơn: phí khi số lượng/thanh dưới ngưỡng, phí gia công phụ, cước phát sinh, khoản phụ ngoài đơn giá hàng. Mỗi phần tử có name (diễn giải đủ nghĩa như trên đơn), quantity (không rõ thì 1), unitPrice (số tiền đơn vị nếu có; chỉ có diễn giải không có giá thì 0), vatPercent (nếu kèm thuế riêng; không thì 0). Không đưa dòng tổng cộng, thành tiền cuối bảng, hay dòng hàng hóa chính vào surcharges. Không thấy khoản nào thì mảng rỗng.
 
@@ -89,7 +97,7 @@ Có thể vừa có tỉ lệ vừa có số tiền. Không nhầm lịch thanh 
 
 Không thấy thì để chuỗi rỗng hoặc 0, không bịa.
 JSON:
-{"kind":"kinh","supplierName":"","supplierCode":"","supplierAddress":"","supplierPhone":"","supplierBankName":"","supplierAccountNumber":"","supplierWebsite":"","supplierEmail":"","supplierTaxCode":"","supplierRepresentativeName":"","supplierRepresentativeTitle":"","headerNote":"","vatMode":"khong_ro","vatInline":false,"vatEvidence":"","surcharges":[{"name":"","quantity":1,"unitPrice":0,"vatPercent":0}],"depositPercent":0,"depositAmount":0,"depositNote":"","lines":[{"code":"","name":"","spec":"","unit":"tấm","colorCode":"","barCount":0,"lengthM":0,"kgPerM":0,"totalKg":0,"quantity":0,"unitPrice":0,"vatPercent":0,"widthMm":0,"heightMm":0}]}
+{"kind":"kinh","supplierName":"","supplierCode":"","supplierAddress":"","supplierPhone":"","supplierBankName":"","supplierAccountNumber":"","supplierWebsite":"","supplierEmail":"","supplierTaxCode":"","supplierRepresentativeName":"","supplierRepresentativeTitle":"","headerNote":"","vatMode":"khong_ro","vatInline":false,"vatTongDaTinh":false,"vatEvidence":"","surcharges":[{"name":"","quantity":1,"unitPrice":0,"vatPercent":0}],"depositPercent":0,"depositAmount":0,"depositNote":"","lines":[{"code":"","name":"","spec":"","unit":"tấm","colorCode":"","barCount":0,"lengthM":0,"kgPerM":0,"totalKg":0,"quantity":0,"unitPrice":0,"vatPercent":0,"widthMm":0,"heightMm":0}]}
 Với kính, widthMm và heightMm là số nguyên milimét, 1.250 nghĩa là 1250. quantity là tổng số tấm. colorCode nhận houseNote. spec nhận ghi chú trong hoặc mờ.
 Số để dạng số. Đơn giá là số nguyên đồng, bỏ dấu chấm ngăn nghìn. kind chỉ được là nhom, bo_cai hoặc kinh.`;
 
@@ -256,13 +264,16 @@ function parseOrder(raw: string): PdfOrder {
     headerNote,
     ...(() => {
       const vatInline = nhanVatInline(data.vatInline, lines);
+      const vatEvidence = textOf(data.vatEvidence).slice(0, 300);
+      const vatTongDaTinh = nhanVatTongDaTinh(data.vatTongDaTinh, headerNote, vatEvidence);
       // Cột VAT từng dòng → giá là net, luôn chua_vat — không hỏi popup.
       return {
         vatInline,
+        vatTongDaTinh,
         vatMode: (vatInline ? "chua_vat" : nhanVatMode(data.vatMode, headerNote)) as VatMode,
+        vatEvidence,
       };
     })(),
-    vatEvidence: textOf(data.vatEvidence).slice(0, 300),
     surcharges,
     depositPercent,
     depositAmount,
@@ -327,6 +338,19 @@ function nhanVatInline(flag: unknown, lines: PdfLine[]) {
   if (flag === false || flag === "false" || flag === 0 || flag === "0") return false;
   const coVat = lines.filter((line) => line.vatPercent > 0).length;
   return coVat >= Math.max(1, Math.ceil(lines.length / 2));
+}
+
+// Dưới bảng đã tách khối tính thuế tổng hay chưa. Ưu tiên cờ AI; thiếu thì dò chữ trên note/evidence.
+function nhanVatTongDaTinh(flag: unknown, headerNote: string, vatEvidence: string) {
+  if (flag === true || flag === "true" || flag === 1 || flag === "1") return true;
+  if (flag === false || flag === "false" || flag === 0 || flag === "0") return false;
+  const chu = fold(`${headerNote} ${vatEvidence}`);
+  // Chỉ dấu hiệu khối tổng dưới bảng — không lấy câu "cộng VAT" (đó thuộc vatMode chua_vat).
+  return coChu(chu, [
+    "tien hang", "tien thue", "thue gtgt", "thue vat", "thue gia tri gia tang",
+    "thanh tien sau thue", "tong sau thue", "gia tri sau thue", "gia tri truoc thue",
+    "vat amount", "tax amount", "amount excluding tax", "amount including tax",
+  ]);
 }
 
 export async function readOrderPdf(file: Buffer): Promise<PdfOrder> {

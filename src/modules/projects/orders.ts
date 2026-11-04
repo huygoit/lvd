@@ -294,23 +294,25 @@ export function orderLineAmount(kind: string, line: { totalGrams: number; quanti
   return Math.round(base * line.unitPrice / 1000);
 }
 
-// Có cột VAT từng dòng → net. Chỉ gom_vat mới tách ngược. chua_vat / khong_ro: không coi là đã gồm.
-export function donGomVat(vatMode: string, vatInline: boolean) {
+// Suy ngược chỉ khi: giá gồm VAT + không cột VAT dòng + dưới bảng CHƯA tính VAT tổng.
+export function donGomVat(vatMode: string, vatInline: boolean, vatTongDaTinh = false) {
   if (vatInline) return false;
+  if (vatTongDaTinh) return false;
   return vatMode === "gom_vat";
 }
 
-// Tổng thanh toán của dòng. Đơn giá gồm VAT thì số tính từ đơn giá đã là sau thuế, không cộng thêm.
+// Tổng thanh toán của dòng. Đơn giá gồm VAT (và cần suy ngược) thì số từ đơn giá đã là sau thuế.
 // khong_ro: giữ nguyên số trên đơn, chưa cộng/tách thuế — chờ người dùng xác nhận.
 export function orderLinePayable(
   kind: string,
   line: { totalGrams: number; quantityMilli: number; unitPrice: number; lengthMm: number; barCount: number; taxBps: number },
   vatMode = "khong_ro",
   vatInline = false,
+  vatTongDaTinh = false,
 ) {
   const tien = orderLineAmount(kind, line);
   if (vatMode === "khong_ro") return tien;
-  if (donGomVat(vatMode, vatInline)) return tien;
+  if (donGomVat(vatMode, vatInline, vatTongDaTinh)) return tien;
   if (!tien || !line.taxBps) return tien;
   return tien + Math.round((tien * line.taxBps) / 10000);
 }
@@ -326,10 +328,11 @@ export function orderSurchargePayable(
   row: { quantityMilli: number; unitPrice: number; taxBps: number },
   vatMode = "khong_ro",
   vatInline = false,
+  vatTongDaTinh = false,
 ) {
   const tien = orderSurchargeAmount(row);
   if (vatMode === "khong_ro") return tien;
-  if (donGomVat(vatMode, vatInline)) return tien;
+  if (donGomVat(vatMode, vatInline, vatTongDaTinh)) return tien;
   if (!tien || !row.taxBps) return tien;
   return tien + Math.round((tien * row.taxBps) / 10000);
 }
@@ -352,6 +355,7 @@ function present(order: {
   headerNote: string;
   vatMode: string;
   vatInline: boolean;
+  vatTongDaTinh: boolean;
   vatEvidence: string;
   depositPercentBps?: number;
   depositAmount?: number;
@@ -387,8 +391,8 @@ function present(order: {
   }[];
 }, delivery = "", canShip = true, shipped = false) {
   const phuThu = order.surcharges ?? [];
-  const tienDong = order.lines.reduce((sum, line) => sum + orderLinePayable(order.kind, line, order.vatMode, order.vatInline), 0);
-  const tienPhu = phuThu.reduce((sum, row) => sum + orderSurchargePayable(row, order.vatMode, order.vatInline), 0);
+  const tienDong = order.lines.reduce((sum, line) => sum + orderLinePayable(order.kind, line, order.vatMode, order.vatInline, order.vatTongDaTinh), 0);
+  const tienPhu = phuThu.reduce((sum, row) => sum + orderSurchargePayable(row, order.vatMode, order.vatInline, order.vatTongDaTinh), 0);
   return {
     id: order.id,
     code: order.code,
@@ -415,6 +419,7 @@ function present(order: {
     headerNote: order.headerNote,
     vatMode: order.vatMode,
     vatInline: order.vatInline,
+    vatTongDaTinh: order.vatTongDaTinh,
     vatEvidence: order.vatEvidence,
     depositPercent: (order.depositPercentBps ?? 0) / 100,
     depositAmount: order.depositAmount ?? 0,
@@ -535,6 +540,7 @@ export async function createManualProjectOrder(user: User, projectId: string, ki
         // Đơn tay: giá nhập chưa gồm VAT, VAT chọn ở footer / từng dòng phụ thu.
         vatMode: "chua_vat",
         vatInline: false,
+        vatTongDaTinh: false,
         vatEvidence: "tao_tay",
       },
       include,
@@ -559,6 +565,7 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
   const kept = parsed.lines.filter((line) => !junk(line));
   if (!kept.length) throw new AppError("Không bóc được dòng hàng nào trong tệp.", 400);
   const vatInline = parsed.vatInline;
+  const vatTongDaTinh = parsed.vatTongDaTinh;
   // Có cột VAT từng dòng → giá dòng là net, luôn chua_vat, không hỏi popup.
   // Không cột: giữ vatMode từ PDF (khong_ro / gom / chua) để UI xác nhận.
   const vatMode: VatMode = vatInline ? "chua_vat" : parsed.vatMode;
@@ -603,6 +610,7 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
         headerNote: parsed.headerNote,
         vatMode,
         vatInline,
+        vatTongDaTinh,
         vatEvidence: parsed.vatEvidence,
         depositPercentBps: Math.round(parsed.depositPercent * 100),
         depositAmount: parsed.depositAmount,

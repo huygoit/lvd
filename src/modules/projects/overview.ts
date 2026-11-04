@@ -52,6 +52,7 @@ export async function readProjectOverview(user: User, projectId: string): Promis
         kind: true,
         vatMode: true,
         vatInline: true,
+        vatTongDaTinh: true,
         lines: { select: { totalGrams: true, quantityMilli: true, unitPrice: true, lengthMm: true, barCount: true, taxBps: true } },
         surcharges: { select: { quantityMilli: true, unitPrice: true, taxBps: true } },
       },
@@ -79,8 +80,8 @@ export async function readProjectOverview(user: User, projectId: string): Promis
 
   // Chi phí đơn hàng = dòng hàng + phụ thu, theo tổng thanh toán (đã gồm VAT) sát số trả NCC.
   const tienDonHang = donHang.reduce((tong, don) => {
-    const hang = don.lines.reduce((dong, line) => dong + orderLinePayable(don.kind, line, don.vatMode, don.vatInline), 0);
-    const phu = don.surcharges.reduce((dong, row) => dong + orderSurchargePayable(row, don.vatMode, don.vatInline), 0);
+    const hang = don.lines.reduce((dong, line) => dong + orderLinePayable(don.kind, line, don.vatMode, don.vatInline, don.vatTongDaTinh), 0);
+    const phu = don.surcharges.reduce((dong, row) => dong + orderSurchargePayable(row, don.vatMode, don.vatInline, don.vatTongDaTinh), 0);
     return tong + hang + phu;
   }, 0);
   const thay = thayChiPhiChung(user);
