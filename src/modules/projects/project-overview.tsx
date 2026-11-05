@@ -47,7 +47,6 @@ export function ProjectOverview({
   onEdit,
   onQuote,
   onHangMuc,
-  onSauThue,
   addLineRef,
 }: {
   project: {
@@ -76,7 +75,6 @@ export function ProjectOverview({
   onEdit: () => void;
   onQuote: () => void;
   onHangMuc: (active: boolean) => void;
-  onSauThue: (value: number | null) => void;
   addLineRef: RefObject<HangMucActions | null>;
 }) {
   const [tab, setTab] = useState<Tab>("Tổng quan");
@@ -115,7 +113,7 @@ export function ProjectOverview({
           onQuote={onQuote}
         />
       ) : tab === "Hạng mục" ? (
-        <ProjectItems projectId={project.id} defaultOwnerId={project.ownerId} staff={staff} canEdit={canEdit} addLineRef={addLineRef} vatPercent={project.vatPercent} onSauThue={onSauThue} />
+        <ProjectItems projectId={project.id} defaultOwnerId={project.ownerId} staff={staff} canEdit={canEdit} addLineRef={addLineRef} vatPercent={project.vatPercent} />
       ) : tab === "Đơn đặt hàng" ? (
         <ProjectOrders projectId={project.id} canEdit={canEdit} />
       ) : tab === "Vật tư công trình" ? (

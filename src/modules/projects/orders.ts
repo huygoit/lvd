@@ -5,6 +5,7 @@ import { prisma } from "@/shared/db";
 import { AppError } from "@/shared/errors";
 import { canonMeasureUnit } from "@/shared/catalog/units";
 import { foldVi } from "@/shared/catalog/materials";
+import { isVatPercent } from "@/shared/catalog/vat";
 import { assertAny, assertOwn } from "@/modules/system/access";
 import { writeAudit } from "@/modules/system/audit";
 import { nextCode } from "@/modules/system/codes";
@@ -293,22 +294,45 @@ function supplierBank(bankName: string, accountNumber: string) {
 }
 
 // Trả về thành tiền trước thuế của một dòng đơn hàng.
-export function orderLineAmount(kind: string, line: { totalGrams: number; quantityMilli: number; unitPrice: number; lengthMm: number; barCount: number }) {
+export function orderLineAmount(kind: string, line: { totalGrams: number; quantityMilli: number; unitPrice: number; lengthMm: number; barCount: number; gramsPerMeter?: number }) {
   if (!line.unitPrice) return 0;
   if (kind === "kinh") {
     // Khớp Excel/PDF: làm tròn(rộng_mm × cao_mm × số_tấm × đơn_giá / 1e6).
     const tam = line.quantityMilli / 1000;
     return Math.round((line.lengthMm * line.barCount * tam * line.unitPrice) / 1_000_000);
   }
-  const base = kind === "nhom" ? line.totalGrams : line.quantityMilli;
-  return Math.round(base * line.unitPrice / 1000);
+  if (kind === "nhom") {
+    // Khớp PDF: làm tròn(số_thanh × dài_mm × kg/m_milli × đơn_giá / 1e6).
+    // Không nhân tổng kg đã làm tròn sẵn (dễ lệch vài chục đồng so với thành tiền trên tệp).
+    const gpm = line.gramsPerMeter ?? 0;
+    if (line.barCount > 0 && line.lengthMm > 0 && gpm > 0) {
+      return Math.round((line.barCount * line.lengthMm * gpm * line.unitPrice) / 1_000_000);
+    }
+    return Math.round((line.totalGrams * line.unitPrice) / 1000);
+  }
+  return Math.round((line.quantityMilli * line.unitPrice) / 1000);
 }
 
-// Giá/thành tiền dòng đã gồm VAT → suy ngược khi hiển thị gốc/thuế dòng.
-// vatTongDaTinh chỉ nói footer có tách thuế tổng — không đổi việc giá dòng đã gồm hay chưa.
+// Suy ngược chỉ khi gom_vat. vatInline luôn là chưa gồm.
 export function donGomVat(vatMode: string, vatInline: boolean, _vatTongDaTinh = false) {
   if (vatInline) return false;
   return vatMode === "gom_vat";
+}
+
+// Đã có mức thuế 5/8/10 trên dòng (hoặc user/PDF cột dòng đã chốt).
+export function donDaCoMucThue(vatEvidence: string, vatInline: boolean, lines: { taxBps: number }[]) {
+  if (vatInline || vatEvidence === "pdf_vat_dong") return true;
+  if (vatEvidence === "nguoi_dung_xac_nhan" || vatEvidence === "tao_tay") return true;
+  // Chỉ tin khi dòng thật sự mang 5/8/10%. pdf_vat_muc + taxBps=0 là gắn nhầm.
+  return lines.some((line) => line.taxBps === 500 || line.taxBps === 800 || line.taxBps === 1000);
+}
+
+// Cần hỏi user khi: thiếu mức thuế, hoặc chưa rõ gồm/chưa (khong_ro).
+export function canHoiVatDon(vatMode: string, vatEvidence: string, vatInline: boolean, lines: { taxBps: number }[]) {
+  if (vatEvidence === "nguoi_dung_xac_nhan" || vatEvidence === "tao_tay") return false;
+  if (vatInline) return false;
+  if (vatMode === "khong_ro") return true;
+  return !donDaCoMucThue(vatEvidence, vatInline, lines);
 }
 
 // Tổng thanh toán của dòng. Đơn giá gồm VAT (và cần suy ngược) thì số từ đơn giá đã là sau thuế.
@@ -402,14 +426,9 @@ function present(order: {
   }[];
 }, delivery = "", canShip = true, shipped = false) {
   const phuThu = order.surcharges ?? [];
-  const tienDong = order.lines.reduce((sum, line) => sum + orderLinePayable(order.kind, line, order.vatMode, order.vatInline, order.vatTongDaTinh), 0);
-  const tienPhu = phuThu.reduce((sum, row) => sum + orderSurchargePayable(row, order.vatMode, order.vatInline, order.vatTongDaTinh), 0);
-  // Footer có thuế tổng + giá dòng CHƯA gồm VAT → cộng vatTongTien.
-  // Footer có thuế tổng + giá dòng ĐÃ gồm VAT → tổng = tổng dòng (đã gồm), không cộng thêm thuế.
-  const gomVat = donGomVat(order.vatMode, order.vatInline, order.vatTongDaTinh);
-  const tongTien = order.vatTongDaTinh && (order.vatTongTien ?? 0) > 0 && !gomVat
-    ? tienDong + tienPhu + order.vatTongTien
-    : tienDong + tienPhu;
+  const tienDong = order.lines.reduce((sum, line) => sum + orderLinePayable(order.kind, line, order.vatMode, order.vatInline), 0);
+  const tienPhu = phuThu.reduce((sum, row) => sum + orderSurchargePayable(row, order.vatMode, order.vatInline), 0);
+  const tongTien = tienDong + tienPhu;
   return {
     id: order.id,
     code: order.code,
@@ -579,26 +598,26 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
   const bytes = Buffer.from(await file.arrayBuffer());
   if (bytes.subarray(0, 5).toString("latin1") !== "%PDF-") throw new AppError("Tệp không phải PDF.", 400);
   const fileHash = createHash("sha256").update(bytes).digest("hex");
-  const parsed = await readOrderPdf(bytes);
+  // Trùng hash PDF → dùng cache parse; prompt Claude cũng bật cache_control.
+  const { order: parsed, fromCache } = await readOrderPdf(bytes, fileHash);
+  onStage(fromCache ? "cache" : "doc");
   onStage("doi");
   const kept = parsed.lines.filter((line) => !junk(line));
   if (!kept.length) throw new AppError("Không bóc được dòng hàng nào trong tệp.", 400);
   const vatInline = parsed.vatInline;
-  const vatTongDaTinh = parsed.vatTongDaTinh;
-  const vatTongTien = parsed.vatTongTien;
-  // Cột VAT dòng → net. Còn lại giữ vatMode PDF (gom_vat nếu đơn giá đã gồm thuế).
-  // vatTongDaTinh chỉ là footer tách thuế — không ép chua_vat (tránh cộng thuế hai lần).
+  const mucThue = parsed.vatPercent;
+  // vatInline → chua_vat. Còn lại giữ đúng gom/chua/khong_ro từ PDF (khong_ro → popup hỏi gồm/chưa).
   const vatMode: VatMode = vatInline ? "chua_vat" : parsed.vatMode;
-  // Đã rõ mode/thuế trên PDF → chốt luôn, chỉ hỏi khi khong_ro.
-  const vatEvidence = vatTongDaTinh
-    ? "pdf_vat_tong"
-    : vatMode === "gom_vat" || vatMode === "chua_vat"
-      ? "pdf_vat_mode"
-      : parsed.vatEvidence;
-  // Không có cột VAT từng dòng: gợi ý 8% (user có thể đổi khi xác nhận khong_ro).
-  const shaped = (await matchLines(parsed.kind, kept.map((line, index) => fromPdf(parsed.kind, line, index + 1)))).map((line) => (
-    !vatInline && !line.taxBps ? { ...line, taxBps: 800 } : line
-  ));
+  // Có mức 5/8/10 (hoặc 0% ghi rõ) → gắn vào dòng. null = chưa rõ, hỏi popup.
+  let vatEvidence = "";
+  if (vatInline) vatEvidence = "pdf_vat_dong";
+  else if (mucThue !== null) vatEvidence = "pdf_vat_muc";
+  else vatEvidence = "";
+  const shaped = (await matchLines(parsed.kind, kept.map((line, index) => fromPdf(parsed.kind, line, index + 1)))).map((line) => {
+    if (vatInline) return line;
+    if (mucThue === null) return { ...line, taxBps: 0 };
+    return { ...line, taxBps: line.taxBps > 0 ? line.taxBps : mucThue * 100 };
+  });
   const supplier = await matchSupplier(parsed.supplierName, parsed.supplierAddress, parsed.supplierPhone);
   await chanDonTrung(projectId, fileHash, parsed.kind, {
     partnerId: supplier?.id ?? "",
@@ -636,8 +655,8 @@ export async function importProjectOrder(user: User, projectId: string, file: Fi
         headerNote: parsed.headerNote,
         vatMode,
         vatInline,
-        vatTongDaTinh,
-        vatTongTien,
+        vatTongDaTinh: false,
+        vatTongTien: 0,
         vatEvidence,
         depositPercentBps: Math.round(parsed.depositPercent * 100),
         depositAmount: parsed.depositAmount,
@@ -780,18 +799,6 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
   if (rawTaxCode.trim() && !contact.supplierTaxCode) throw new AppError("Mã số thuế không đúng.", 400);
   const headerNote = given(input.headerNote, current.headerNote);
   if (!supplierName) throw new AppError("Đơn hàng không hợp lệ. Thiếu tên nhà cung cấp.", 400);
-  // Chỉ chặn lưu khi PDF khong_ro chưa được user xác nhận.
-  // Đã chốt: cột VAT dòng, thuế tổng PDF, nhận diện gom/chua, đơn tay, hoặc user xác nhận.
-  const daXacNhanVat =
-    current.vatEvidence === "nguoi_dung_xac_nhan"
-    || current.vatEvidence === "tao_tay"
-    || current.vatEvidence === "pdf_vat_tong"
-    || current.vatEvidence === "pdf_vat_mode"
-    || current.vatMode === "gom_vat"
-    || current.vatMode === "chua_vat";
-  if (!daXacNhanVat && !current.vatInline && !current.vatTongDaTinh) {
-    throw new AppError("Cần xác nhận mức VAT của đơn trước khi lưu.", 400);
-  }
   const deposit = cleanDeposit(input, {
     depositPercentBps: current.depositPercentBps,
     depositAmount: current.depositAmount,
@@ -805,6 +812,10 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
   // Phụ thu tùy chọn: mảng rỗng = xóa hết phụ thu trên đơn.
   const rawSurcharges = Array.isArray(input.surcharges) ? input.surcharges : [];
   const surcharges = rawSurcharges.map((row, index) => cleanSurcharge(row as SurchargeInput, index + 1));
+  // Thiếu mức thuế hoặc chưa rõ gồm/chưa → bắt xác nhận trước khi lưu.
+  if (canHoiVatDon(current.vatMode, current.vatEvidence, current.vatInline, lines)) {
+    throw new AppError("Cần xác nhận VAT của đơn trước khi lưu.", 400);
+  }
   const needsMaterial = lines.some((line) => line.materialCode);
   if (needsMaterial) assertAny(user, ["inventory.create", "inventory.update"]);
   const known = await matchSupplier(supplierName, supplierAddress, supplierPhone);
@@ -943,9 +954,7 @@ export async function saveProjectOrder(user: User, projectId: string, orderId: s
   return present(saved);
 }
 
-// Xác nhận VAT sau nạp PDF.
-// - khong_ro: chọn đã gồm / chưa gồm + mức %.
-// - gom_vat / chua_vat: giữ mode, chỉ chốt mức % cả đơn.
+// Popup khi thiếu mức thuế và/hoặc chưa rõ gồm/chưa.
 export async function confirmProjectOrderVat(
   user: User,
   projectId: string,
@@ -956,43 +965,38 @@ export async function confirmProjectOrderVat(
   await visible(user, projectId);
   const current = await prisma.projectOrder.findFirst({
     where: { id: orderId, projectId },
-    select: { id: true, code: true, vatMode: true, vatInline: true, vatTongDaTinh: true, vatEvidence: true },
+    select: {
+      id: true,
+      code: true,
+      vatMode: true,
+      vatInline: true,
+      vatEvidence: true,
+      lines: { select: { taxBps: true } },
+    },
   });
   if (!current) throw new AppError("Không tìm thấy đơn hàng.", 404);
-  if (
-    current.vatEvidence === "nguoi_dung_xac_nhan"
-    || current.vatEvidence === "tao_tay"
-    || current.vatEvidence === "pdf_vat_tong"
-    || current.vatEvidence === "pdf_vat_mode"
-  ) {
-    throw new AppError("Đơn này đã xác nhận VAT.", 400);
-  }
-  if (current.vatInline) {
-    throw new AppError("Đơn có VAT từng dòng (chưa gồm VAT), không cần xác nhận thêm.", 400);
-  }
-  if (current.vatTongDaTinh) {
-    throw new AppError("Đơn đã có thuế tổng trên PDF, không cần xác nhận thêm.", 400);
+  if (!canHoiVatDon(current.vatMode, current.vatEvidence, current.vatInline, current.lines)) {
+    throw new AppError("Đơn này đã xác nhận VAT, không cần xác nhận thêm.", 400);
   }
 
+  const coMuc = donDaCoMucThue(current.vatEvidence, current.vatInline, current.lines);
   const vatPercent = Math.round(Math.max(0, Number(text(input.vatPercent).replace(",", ".")) || 0));
-  if (![0, 5, 8, 10].includes(vatPercent)) throw new AppError("Chọn mức VAT 0%, 5%, 8% hoặc 10%.", 400);
+  if (!isVatPercent(vatPercent)) throw new AppError("Chọn mức VAT 0%, 5%, 8% hoặc 10%.", 400);
   const taxBps = vatPercent * 100;
 
-  let vatMode: VatMode;
-  if (current.vatMode === "khong_ro") {
+  let vatMode: VatMode = current.vatMode === "gom_vat" || current.vatMode === "chua_vat"
+    ? current.vatMode
+    : "khong_ro";
+  if (vatMode === "khong_ro") {
     const gom = input.gomVat === true || text(input.gomVat) === "true" || text(input.gomVat) === "gom_vat";
     const chua = input.gomVat === false || text(input.gomVat) === "false" || text(input.gomVat) === "chua_vat";
     if (!gom && !chua) throw new AppError("Chọn đơn đã gồm VAT hoặc chưa gồm VAT.", 400);
     vatMode = gom ? "gom_vat" : "chua_vat";
-  } else if (current.vatMode === "gom_vat" || current.vatMode === "chua_vat") {
-    vatMode = current.vatMode;
-  } else {
-    throw new AppError("Trạng thái VAT của đơn không hợp lệ.", 400);
   }
 
   const saved = await prisma.$transaction(async (tx) => {
-    // Không có cột VAT từng dòng: áp cùng mức cho mọi dòng + phụ thu.
-    if (!current.vatInline) {
+    // Chỉ ghi đè % khi đơn chưa có mức thuế trên PDF.
+    if (!coMuc) {
       await tx.projectOrderLine.updateMany({ where: { orderId }, data: { taxBps } });
       await tx.projectOrderSurcharge.updateMany({ where: { orderId }, data: { taxBps } });
     }

@@ -725,6 +725,7 @@ function nhanNoiNhan(toKind: string, projectName: string, workshopName: string) 
 type DongDonGia = {
   id: string;
   totalGrams: number;
+  gramsPerMeter: number;
   quantityMilli: number;
   unitPrice: number;
   lengthMm: number;
@@ -748,20 +749,24 @@ function tienTheoSlGiao(
     const tam = qtyMilli / 1000;
     tien = Math.round((line.lengthMm * line.barCount * tam * line.unitPrice) / 1_000_000);
   } else if (kind === "nhom") {
-    const ordered = line.barCount * 1000;
-    if (ordered <= 0) return 0;
-    // Quy đổi gram theo tỷ lệ số thanh giao.
-    const grams = Math.round((line.totalGrams * qtyMilli) / ordered);
-    tien = Math.round((grams * line.unitPrice) / 1000);
+    const thanhGiao = qtyMilli / 1000;
+    if (thanhGiao <= 0) return 0;
+    // Cùng đơn hàng: thanh × dài_mm × kg/m_milli × giá / 1e6.
+    if (line.lengthMm > 0 && line.gramsPerMeter > 0) {
+      tien = Math.round((thanhGiao * line.lengthMm * line.gramsPerMeter * line.unitPrice) / 1_000_000);
+    } else {
+      const ordered = line.barCount * 1000;
+      if (ordered <= 0) return 0;
+      const grams = Math.round((line.totalGrams * qtyMilli) / ordered);
+      tien = Math.round((grams * line.unitPrice) / 1000);
+    }
   } else {
     tien = Math.round((qtyMilli * line.unitPrice) / 1000);
   }
   if (vatMode === "khong_ro") return tien;
-  // Giá đã gồm VAT → không cộng thêm. Footer thuế tổng không đổi điều này.
+  // Giá đã gồm VAT → không cộng thêm. Chưa gồm → cộng theo %.
   if (!vatInline && vatMode === "gom_vat") return tien;
   if (!tien || !line.taxBps) return tien;
-  // chua_vat + footer đã có thuế tổng: tiền theo SL chỉ lấy net (thuế cộng ở cấp đơn).
-  if (vatTongDaTinh) return tien;
   return tien + Math.round((tien * line.taxBps) / 10000);
 }
 
@@ -781,6 +786,7 @@ export async function listOrderDeliveryHistory(user: User, projectId: string, or
         select: {
           id: true,
           totalGrams: true,
+          gramsPerMeter: true,
           quantityMilli: true,
           unitPrice: true,
           lengthMm: true,

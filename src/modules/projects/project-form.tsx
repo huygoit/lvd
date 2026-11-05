@@ -11,6 +11,7 @@ import { NgayNhap } from "@/shared/components/ngay-nhap";
 import { Button } from "@/shared/components/ui/button";
 import { SheetFooter } from "@/shared/components/ui/sheet";
 import { projectStageLabel } from "@/modules/customers/labels";
+import { nhanVatPercent, vatPercents } from "@/shared/catalog/vat";
 
 type Customer = { id: string; code: string; name: string };
 type Staff = { id: string; name: string };
@@ -174,19 +175,17 @@ export function ProjectForm({
 }
 
 function ThueGtgt({ defaultValue }: { defaultValue: number | null }) {
-  const [digits, setDigits] = useState(defaultValue === null ? "" : String(defaultValue));
+  const macDinh = defaultValue !== null && (vatPercents as readonly number[]).includes(defaultValue)
+    ? String(defaultValue)
+    : "";
   return (
-    <input
-      name="vatPercent"
-      value={digits}
-      inputMode="numeric"
-      placeholder=""
-      onChange={(event) => {
-        const raw = event.target.value;
-        if (raw !== "" && !/^\d+$/.test(raw)) return;
-        setDigits(raw.replace(/^0+/, "").slice(0, 10));
-      }}
-      className={inputClass}
-    />
+    <select name="vatPercent" defaultValue={macDinh} className={inputClass}>
+      <option value="">Chưa chọn</option>
+      {vatPercents.map((muc) => (
+        <option key={muc} value={muc}>
+          {nhanVatPercent(muc)}
+        </option>
+      ))}
+    </select>
   );
 }

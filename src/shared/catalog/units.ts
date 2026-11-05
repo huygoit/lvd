@@ -43,6 +43,8 @@ export type MeasureUnit = (typeof measureUnits)[number];
 const aliases: Record<string, MeasureUnit> = {
   mét: "m",
   met: "m",
+  "m²": "m2",
+  "m³": "m3",
 };
 
 export function isMeasureUnit(value: string): value is MeasureUnit {

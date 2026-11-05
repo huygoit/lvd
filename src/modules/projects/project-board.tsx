@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardPaste, Filter, Pencil, Plus, Trash2, X } from "lucide-react";
+import { FileSpreadsheet, Filter, Pencil, Plus, Trash2, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
-import { formatUnitPrice } from "@/modules/projects/item-fields";
 import { ActionBadge } from "@/shared/components/action-badge";
 import { buttonPrimary, inputClass, panelClass, selectClass } from "@/shared/components/controls";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
@@ -103,7 +102,6 @@ export function ProjectBoard({
   const [loadError, setLoadError] = useState("");
   const [formKey, setFormKey] = useState(0);
   const [hangMuc, setHangMuc] = useState(false);
-  const [sauThue, setSauThue] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -129,10 +127,7 @@ export function ProjectBoard({
     setMode(next);
     setTargetId(id);
     setPresetCustomer(customerId);
-    if (next !== "xem") {
-      setHangMuc(false);
-      setSauThue(null);
-    }
+    if (next !== "xem") setHangMuc(false);
     if (next === "them") setFormKey((value) => value + 1);
     const params = new URLSearchParams(window.location.search);
     if (next) params.set("mo", next);
@@ -324,7 +319,6 @@ export function ProjectBoard({
                     onEdit={() => open("sua", current.id)}
                     onQuote={() => router.push(`/bao-gia/moi?khach=${current.customerId}&cong-trinh=${current.id}`)}
                     onHangMuc={setHangMuc}
-                    onSauThue={setSauThue}
                     addLineRef={addLineRef}
                   />
                 ) : targetId ? (
@@ -332,21 +326,29 @@ export function ProjectBoard({
                 ) : null}
               </div>
               <SheetFooter className="flex flex-wrap items-center justify-between gap-3 bg-white">
-                {hangMuc && sauThue !== null ? (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted">Tổng cộng sau thuế</span>
-                    <span className="h-5 w-px bg-line" />
-                    <span className="text-lg font-semibold tabular-nums text-primary">{formatUnitPrice(sauThue)}</span>
-                  </div>
-                ) : null}
+                <div className="flex flex-wrap items-center gap-3">
+                  {hangMuc && canEdit ? (
+                    <Button type="button" variant="outline" onClick={() => addLineRef.current?.add()}>
+                      <Plus className="size-4" aria-hidden /> Thêm dòng hạng mục
+                    </Button>
+                  ) : null}
+                </div>
                 <div className="ml-auto flex flex-wrap justify-end gap-2">
                   {hangMuc && canEdit ? (
                     <>
-                      <Button type="button" variant="outline" onClick={() => addLineRef.current?.copy()}>
-                        <ClipboardPaste className="size-4" aria-hidden /> Thêm từ copy hạng mục
+                      <Button
+                        type="button"
+                        onClick={() => addLineRef.current?.importFile()}
+                        className="border-0 bg-[linear-gradient(135deg,#047857_0%,#059669_55%,#34d399_100%)] text-white shadow-[0_8px_18px_rgba(4,120,87,0.28)] hover:opacity-95 hover:bg-[linear-gradient(135deg,#047857_0%,#059669_55%,#34d399_100%)]"
+                      >
+                        <FileSpreadsheet className="size-4" aria-hidden /> Nạp hạng mục từ file
                       </Button>
-                      <Button type="button" onClick={() => addLineRef.current?.add()}>
-                        <Plus className="size-4" aria-hidden /> Thêm hạng mục mới
+                      <Button
+                        type="button"
+                        onClick={() => addLineRef.current?.importPhuLuc()}
+                        className="border-0 bg-[linear-gradient(135deg,#047857_0%,#059669_55%,#34d399_100%)] text-white shadow-[0_8px_18px_rgba(4,120,87,0.28)] hover:opacity-95 hover:bg-[linear-gradient(135deg,#047857_0%,#059669_55%,#34d399_100%)]"
+                      >
+                        <FileSpreadsheet className="size-4" aria-hidden /> Thêm hạng mục theo PLHĐ
                       </Button>
                     </>
                   ) : null}

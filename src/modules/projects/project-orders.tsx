@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/shared/components/ui/alert-dialog";
 import { formatStockQty } from "@/shared/catalog/stock";
 import { measureUnits } from "@/shared/catalog/units";
+import { canonVatText, vatPercents } from "@/shared/catalog/vat";
 import { ProjectShip } from "@/modules/projects/project-ship";
 import { callApi } from "@/shared/client/api";
 import { formatUnitPrice } from "@/modules/projects/item-fields";
@@ -65,9 +66,8 @@ type Order = {
   headerNote: string;
   vatMode: "gom_vat" | "chua_vat" | "khong_ro";
   vatInline: boolean;
-  // Dưới bảng PDF đã tính VAT tổng → không suy ngược; không hỏi popup.
+  // Giữ tương thích — không dùng quyết định logic VAT.
   vatTongDaTinh: boolean;
-  // Số thuế GTGT tổng trên PDF (đồng). Ưu tiên hiển thị khi > 0.
   vatTongTien: number;
   vatEvidence: string;
   depositPercent: number;
@@ -166,8 +166,9 @@ function gioLichSu(iso: string) {
 }
 
 const stages = [
-  { id: "tai", label: "Đang tải tệp", pct: 20 },
-  { id: "doc", label: "Đang bóc tách dữ liệu", pct: 55 },
+  { id: "tai", label: "Đang tải tệp", pct: 15 },
+  { id: "doc", label: "Đang bóc tách dữ liệu (Claude)", pct: 55 },
+  { id: "cache", label: "Lấy từ cache (trùng PDF)", pct: 55 },
   { id: "doi", label: "Đang đối chiếu danh mục", pct: 80 },
   { id: "xong", label: "Đã đọc xong", pct: 100 },
 ];
@@ -182,13 +183,11 @@ function nhanNguon(nguon: string) {
   return nguon === "thu_cong" ? "Nạp thủ công" : "Nạp từ PDF";
 }
 
-// Bốn mức VAT chuẩn. Footer và từng dòng dùng chung whitelist này.
-const vatTuyChon = [0, 5, 8, 10] as const;
+// Bốn mức VAT chuẩn — lấy từ danh mục dùng chung.
+const vatTuyChon = vatPercents;
 
 function chuanVat(value: string | number) {
-  const so = typeof value === "number" ? value : Number(String(value).replace(",", ".")) || 0;
-  if ((vatTuyChon as readonly number[]).includes(so)) return String(so);
-  return String(vatTuyChon.reduce((tot, muc) => (Math.abs(muc - so) < Math.abs(tot - so) ? muc : tot)));
+  return canonVatText(value);
 }
 
 function vatChungTuDong(lines: { vatPercent: string }[]) {
@@ -324,28 +323,53 @@ function tienDong(kind: Order["kind"], line: Line) {
   const gia = Number(line.unitPrice.replace(/\./g, "")) || 0;
   if (!gia) return null;
   if (kind === "nhom") {
-    const kg = tongKgNhom(line);
-    if (kg === null) return null;
-    return Math.round(kg * gia);
+    // Khớp PDF: thanh × dài(m) × kg/m × giá — không nhân tổng kg đã làm tròn.
+    const thanh = Number(line.barCount.replace(/[^\d]/g, "")) || 0;
+    const dai = soNhom(line.lengthM);
+    const kgm = soNhom(line.kgPerM);
+    if (!thanh || !dai || !kgm) return null;
+    return Math.round(thanh * dai * kgm * gia);
   }
   const sl = soNhom(line.quantity);
   if (!sl) return null;
   return Math.round(sl * gia);
 }
 
-// Giá dòng đã gồm VAT → suy ngược khi hiện gốc/thuế. Footer thuế tổng không đổi điều này.
-function donGomVat(order: Pick<Order, "vatMode" | "vatInline" | "vatTongDaTinh">) {
+// Suy ngược chỉ theo gom_vat. vatInline = chưa gồm.
+function donGomVat(order: Pick<Order, "vatMode" | "vatInline">) {
   if (order.vatInline) return false;
   return order.vatMode === "gom_vat";
 }
 
-function nhanVatDon(order: Pick<Order, "vatMode" | "vatInline" | "vatTongDaTinh">) {
-  if (order.vatInline) return "VAT từng dòng";
-  if (order.vatMode === "khong_ro") return "Chưa xác nhận VAT";
-  if (order.vatMode === "gom_vat") {
-    return order.vatTongDaTinh ? "Đơn giá đã gồm VAT · thuế tổng lấy từ PDF" : "Đơn hàng bao gồm VAT";
-  }
-  return order.vatTongDaTinh ? "Chưa gồm VAT · thuế tổng lấy từ PDF" : "Đơn hàng chưa bao gồm VAT";
+function nhanVatDon(order: Pick<Order, "vatMode" | "vatInline">) {
+  if (order.vatInline) return "VAT từng dòng · thành tiền chưa gồm thuế";
+  if (order.vatMode === "gom_vat") return "Đơn hàng bao gồm VAT";
+  if (order.vatMode === "chua_vat") return "Đơn hàng chưa bao gồm VAT";
+  return "Chưa rõ đã gồm VAT hay chưa";
+}
+
+function soVatPercent(value: string | number | null | undefined) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const raw = String(value ?? "").replace(/\s/g, "").replace(",", ".");
+  return Number(raw) || 0;
+}
+
+function donDaCoMucThueUi(order: Order) {
+  if (order.vatInline || order.vatEvidence === "pdf_vat_dong") return true;
+  if (order.vatEvidence === "nguoi_dung_xac_nhan" || order.vatEvidence === "tao_tay") return true;
+  // Chỉ khi dòng thật sự có 5/8/10%. Không tin pdf_vat_muc nếu mọi dòng đang 0%.
+  return order.lines.some((line) => {
+    const muc = soVatPercent(line.vatPercent as string | number);
+    return muc === 5 || muc === 8 || muc === 10;
+  });
+}
+
+// Hỏi khi thiếu mức thuế, hoặc chưa rõ gồm/chưa.
+function canHoiVatUi(order: Order) {
+  if (order.vatEvidence === "nguoi_dung_xac_nhan" || order.vatEvidence === "tao_tay") return false;
+  if (order.vatInline) return false;
+  if (order.vatMode === "khong_ro") return true;
+  return !donDaCoMucThueUi(order);
 }
 
 // Số tính từ đơn giá trên dòng. Với đơn gồm VAT đây là số sau thuế (gross).
@@ -453,11 +477,6 @@ function tongThanhToanDon(order: Order) {
   const giaGom = donGomVat(order);
   const hang = congTienThue(order.kind, order.lines, giaGom);
   const phu = congPhuThu(order.surcharges, giaGom);
-  // Chỉ cộng thuế tổng khi giá dòng chưa gồm VAT.
-  if (order.vatTongDaTinh && order.vatTongTien > 0 && !giaGom) {
-    const truoc = hang.truocThue + phu.truocThue;
-    return { thanhToan: truoc + order.vatTongTien, coTien: hang.coTien || phu.coTien || true };
-  }
   return {
     thanhToan: hang.thanhToan + phu.thanhToan,
     coTien: hang.coTien || phu.coTien,
@@ -478,14 +497,9 @@ function orderStats(order: Order) {
   const hang = congTienThue(order.kind, order.lines, giaGom);
   const phu = congPhuThu(order.surcharges, giaGom);
   const truocThue = hang.truocThue + phu.truocThue;
-  // Có thuế tổng trên PDF → hiện đúng số thuế đó.
-  // Tổng thanh toán: giá đã gồm VAT → tổng dòng (không cộng thêm); chưa gồm → dòng + thuế PDF.
-  const taxTuPdf = order.vatTongDaTinh && order.vatTongTien > 0;
-  const tax = taxTuPdf ? order.vatTongTien : hang.tax + phu.tax;
-  const thanhToan = taxTuPdf && !giaGom
-    ? truocThue + tax
-    : hang.thanhToan + phu.thanhToan;
-  const coTien = hang.coTien || phu.coTien || taxTuPdf;
+  const tax = hang.tax + phu.tax;
+  const thanhToan = hang.thanhToan + phu.thanhToan;
+  const coTien = hang.coTien || phu.coTien;
   const tienThue = ["Tiền thuế", coTien ? `${formatUnitPrice(tax)} ₫` : "—"] as const;
   const tongTt = ["Tổng thanh toán", coTien ? `${formatUnitPrice(thanhToan)} ₫` : "—"] as const;
   if (order.kind === "kinh") {
@@ -633,25 +647,22 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
     setDirty(false);
   }
 
-  // Chỉ hỏi khi PDF không rõ đã gồm VAT hay chưa (khong_ro).
-  // Đã nhận diện gom/chua, có % trên tệp, cột VAT dòng, thuế tổng → lấy luôn, không bắt chọn lại.
   function canHoiVat(order: Order) {
-    if (order.vatEvidence === "nguoi_dung_xac_nhan" || order.vatEvidence === "tao_tay" || order.vatEvidence === "pdf_vat_tong" || order.vatEvidence === "pdf_vat_mode") return false;
-    if (order.vatInline) return false;
-    if (order.vatTongDaTinh) return false;
-    return order.vatMode === "khong_ro";
+    return canHoiVatUi(order);
   }
 
   function moDonHoacHoiVat(order: Order, lines: RawLine[], surcharges: RawSurcharge[] = []) {
-    if (canHoiVat(order)) {
-      // khong_ro: bắt chọn gồm/chưa. gom/chua: khóa sẵn mode, chỉ chọn %.
-      setVatGomChon(order.vatMode === "gom_vat" ? "gom" : order.vatMode === "chua_vat" ? "chua" : "");
-      const goiY = vatChungTuDong(lines.map(toLine));
+    const dong = lines.map(toLine);
+    const phu = surcharges.map(toSurcharge);
+    const full = { ...order, lines: dong, surcharges: phu };
+    if (canHoiVat(full)) {
+      setVatGomChon("");
+      const goiY = vatChungTuDong(dong);
       setVatMucChon(goiY === "0" ? "8" : chuanVat(goiY));
       setChoVat({ ...order, lines, surcharges });
       return;
     }
-    moDon(order, lines.map(toLine), surcharges.map(toSurcharge));
+    moDon(order, dong, phu);
   }
 
   function dongPopupVat() {
@@ -667,13 +678,12 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
     setDangXacNhanVat(true);
     setError("");
     try {
-      const gomVat = canChonGom ? vatGomChon === "gom" : choVat.vatMode === "gom_vat";
       const updated = await callApi<Order & { lines: RawLine[]; surcharges?: RawSurcharge[] }>(
         `/api/cong-trinh/${projectId}/don-hang/${choVat.id}/vat`,
         {
           method: "PATCH",
           body: JSON.stringify({
-            gomVat,
+            gomVat: canChonGom ? vatGomChon === "gom" : choVat.vatMode === "gom_vat",
             vatPercent: vatMucChon,
           }),
         },
@@ -1265,12 +1275,6 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
                           {vatTuyChon.map((muc) => <option key={muc} value={muc}>{muc}%</option>)}
                         </select>
                         {donGomVat(current) ? <span className="text-xs text-muted">Thành tiền trên đơn đã gồm thuế — suy ngược gốc/thuế</span> : null}
-                        {current.vatTongDaTinh && current.vatTongTien > 0 ? (
-                          <span className="text-xs text-muted">
-                            Thuế tổng PDF: {formatUnitPrice(current.vatTongTien)} ₫
-                            {donGomVat(current) ? " (đã gồm trong thành tiền — không cộng thêm)" : " (cộng vào tổng)"}
-                          </span>
-                        ) : null}
                         {current.vatInline ? <span className="text-xs text-muted">Đổi footer sẽ áp cho mọi dòng</span> : null}
                       </label>
                     </div>
@@ -1645,8 +1649,24 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
         <AlertDialogContent className="w-[min(100%-1.5rem,34rem)] overflow-hidden border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.22)]">
           {(() => {
             const khongRo = choVat?.vatMode === "khong_ro";
-            const daBietGom = choVat?.vatMode === "gom_vat";
+            const thieuMuc = choVat
+              ? !donDaCoMucThueUi({
+                  ...choVat,
+                  lines: (choVat.lines as RawLine[]).map(toLine),
+                  surcharges: ((choVat.surcharges ?? []) as RawSurcharge[]).map(toSurcharge),
+                })
+              : true;
             const nutOk = khongRo ? Boolean(vatGomChon) : true;
+            const tieuDe = khongRo && !thieuMuc
+              ? "Cần xác nhận đã gồm VAT?"
+              : thieuMuc
+                ? "Chọn mức thuế VAT"
+                : "Xác nhận VAT";
+            const moTa = khongRo && !thieuMuc
+              ? <>Đơn <span className="font-semibold text-white">{choVat?.code}</span> đã có mức thuế, nhưng chưa rõ giá đã gồm thuế hay chưa. Chọn giúp một lần.</>
+              : thieuMuc
+                ? <>Đơn <span className="font-semibold text-white">{choVat?.code}</span> không ghi mức thuế 0% / 5% / 8% / 10%. Chọn mức áp cho cả đơn{khongRo ? " và giá đã gồm hay chưa" : ""}.</>
+                : <>Đơn <span className="font-semibold text-white">{choVat?.code}</span> cần xác nhận VAT.</>;
             return (
               <>
           <div className="relative overflow-hidden bg-[linear-gradient(145deg,#0f766e_0%,#0d9488_42%,#14b8a6_78%,#5eead4_100%)] px-6 pb-8 pt-6 text-white">
@@ -1654,27 +1674,14 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
             <div className="pointer-events-none absolute -bottom-12 left-10 size-32 rounded-full bg-emerald-950/20 blur-2xl" />
             <div className="relative flex items-start gap-4">
               <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/20 shadow-inner ring-1 ring-white/30 backdrop-blur-sm">
-                {khongRo ? <CircleHelp className="size-7" aria-hidden /> : <Percent className="size-7" aria-hidden />}
+                {khongRo && !thieuMuc ? <CircleHelp className="size-7" aria-hidden /> : <Percent className="size-7" aria-hidden />}
               </span>
               <div className="min-w-0 space-y-1.5 pt-0.5">
                 <AlertDialogTitle className="text-lg font-semibold leading-snug text-white">
-                  {khongRo ? "Cần xác nhận VAT" : "Chọn mức thuế VAT"}
+                  {tieuDe}
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-sm leading-6 text-white/90">
-                  {khongRo ? (
-                    <>
-                      Đơn <span className="font-semibold text-white">{choVat?.code}</span> không có dấu hiệu rõ đã gồm thuế hay chưa.
-                      Chọn giúp một lần để hệ thống tính đúng thành tiền.
-                    </>
-                  ) : (
-                    <>
-                      Đơn <span className="font-semibold text-white">{choVat?.code}</span> đã nhận diện{" "}
-                      <span className="font-semibold text-white">
-                        {daBietGom ? "đã bao gồm VAT" : "chưa bao gồm VAT"}
-                      </span>
-                      . Chọn mức thuế áp cho cả đơn.
-                    </>
-                  )}
+                  {moTa}
                 </AlertDialogDescription>
               </div>
             </div>
@@ -1683,7 +1690,9 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
           <div className="space-y-5 bg-white px-6 py-5">
             {khongRo ? (
               <div className="space-y-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">1. Giá trên đơn</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  {thieuMuc ? "1. Giá trên đơn" : "Giá trên đơn"}
+                </p>
                 <div className="grid gap-2.5">
                   {([
                     { id: "gom" as const, title: "Đơn hàng đã bao gồm VAT", hint: "Số trên bảng đã có thuế · hệ thống tách ngược" },
@@ -1721,50 +1730,42 @@ export function ProjectOrders({ projectId, canEdit }: { projectId: string; canEd
             ) : (
               <div className={cn(
                 "rounded-2xl border px-4 py-3",
-                daBietGom ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50",
+                choVat?.vatMode === "gom_vat" ? "border-emerald-200 bg-emerald-50" : "border-sky-200 bg-sky-50",
               )}>
-                <p className={cn("text-sm font-semibold", daBietGom ? "text-emerald-900" : "text-sky-900")}>
-                  {daBietGom ? "Đơn hàng đã bao gồm VAT" : "Đơn hàng chưa bao gồm VAT"}
-                </p>
-                <p className={cn("mt-0.5 text-xs leading-5", daBietGom ? "text-emerald-800/80" : "text-sky-800/80")}>
-                  {daBietGom ? "Thành tiền trên tệp đã có thuế · hệ thống sẽ tách ngược." : "Thành tiền trên tệp là trước thuế · hệ thống sẽ cộng thêm."}
+                <p className={cn("text-sm font-semibold", choVat?.vatMode === "gom_vat" ? "text-emerald-900" : "text-sky-900")}>
+                  {choVat?.vatMode === "gom_vat" ? "Đơn hàng đã bao gồm VAT" : "Đơn hàng chưa bao gồm VAT"}
                 </p>
               </div>
             )}
 
-            {!choVat?.vatInline ? (
-              <div className="space-y-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  {khongRo ? "2. Thuế VAT cho đơn này" : "Thuế VAT cho đơn này"}
-                </p>
-                <div className="grid grid-cols-4 gap-2">
-                  {vatTuyChon.map((muc) => {
-                    const chon = vatMucChon === String(muc);
-                    return (
-                      <button
-                        key={muc}
-                        type="button"
-                        disabled={dangXacNhanVat}
-                        onClick={() => setVatMucChon(String(muc))}
-                        className={cn(
-                          "relative flex h-12 items-center justify-center rounded-xl border text-sm font-semibold tabular-nums transition",
-                          chon
-                            ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
-                            : "border-line bg-white text-ink hover:border-primary/50 hover:bg-soft",
-                        )}
-                      >
-                        {muc}%
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs leading-5 text-muted">Mức này áp cho toàn bộ dòng hàng trên đơn (mặc định gợi ý 8%).</p>
-              </div>
-            ) : (
-              <p className="rounded-xl border border-line bg-soft px-3 py-2.5 text-xs leading-5 text-muted">
-                Đơn có cột VAT từng dòng — chỉ cần chọn đã gồm hay chưa gồm thuế. Mức % giữ theo từng dòng trên tệp.
+            {thieuMuc ? (
+            <div className="space-y-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                {khongRo ? "2. Thuế VAT cho đơn này" : "Thuế VAT cho đơn này"}
               </p>
-            )}
+              <div className="grid grid-cols-4 gap-2">
+                {vatTuyChon.map((muc) => {
+                  const chon = vatMucChon === String(muc);
+                  return (
+                    <button
+                      key={muc}
+                      type="button"
+                      disabled={dangXacNhanVat}
+                      onClick={() => setVatMucChon(String(muc))}
+                      className={cn(
+                        "relative flex h-12 items-center justify-center rounded-xl border text-sm font-semibold tabular-nums transition",
+                        chon
+                          ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
+                          : "border-line bg-white text-ink hover:border-primary/50 hover:bg-soft",
+                      )}
+                    >
+                      {muc}%
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            ) : null}
 
             {error && choVat ? (
               <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{error}</p>

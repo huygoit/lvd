@@ -7,6 +7,7 @@ import { assertAny, assertOwn, listOwner } from "@/modules/system/access";
 import { nextCode } from "@/modules/system/codes";
 import { projectStageLabel } from "@/modules/customers/labels";
 import { xoaTep } from "@/modules/projects/document-store";
+import { isVatPercent, type VatPercent } from "@/shared/catalog/vat";
 
 const stages = Object.keys(projectStageLabel);
 
@@ -22,13 +23,12 @@ function cleanDate(value: string | undefined, label: string) {
   return text;
 }
 
-function cleanVat(value: ProjectInput["vatPercent"]) {
+function cleanVat(value: ProjectInput["vatPercent"]): VatPercent | null {
   if (value === null || value === undefined) return null;
   const digits = String(value).trim();
   if (!digits) return null;
-  if (!/^[1-9]\d*$/.test(digits)) throw new AppError("Thuế GTGT chỉ nhận số nguyên dương.", 400);
-  const rate = Number(digits);
-  if (!Number.isSafeInteger(rate) || rate > 2147483647) throw new AppError("Thuế GTGT quá lớn.", 400);
+  const rate = Number(digits.replace(",", "."));
+  if (!isVatPercent(rate)) throw new AppError("Thuế GTGT chỉ nhận 0%, 5%, 8% hoặc 10%.", 400);
   return rate;
 }
 

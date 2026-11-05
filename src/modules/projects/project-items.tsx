@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState, type FocusEvent, type PointerEvent as SuKienChuot, type RefObject } from "react";
 import { measureUnits } from "@/shared/catalog/units";
-import { Trash2, X } from "lucide-react";
+import { Percent, Trash2, Wallet, X } from "lucide-react";
 import { callApi } from "@/shared/client/api";
 import { ActionBadge, listPanelClass } from "@/shared/components/action-badge";
 import { Button } from "@/shared/components/ui/button";
@@ -22,6 +22,11 @@ import {
   parseQuantityMilli,
   parseUnitPrice,
 } from "@/modules/projects/item-fields";
+import {
+  docHangMucTuExcel,
+  nhanBacDonGia,
+} from "@/modules/projects/import-hang-muc-excel";
+import { cn } from "@/shared/lib/cn";
 
 type Staff = { id: string; name: string };
 
@@ -157,6 +162,8 @@ function isBlank(line: Line) {
 export type HangMucActions = {
   add: () => void;
   copy: () => void;
+  importFile: () => void;
+  importPhuLuc: () => void;
 };
 
 export function ProjectItems({
@@ -166,7 +173,6 @@ export function ProjectItems({
   canEdit,
   addLineRef,
   vatPercent,
-  onSauThue,
 }: {
   projectId: string;
   defaultOwnerId: string;
@@ -174,16 +180,20 @@ export function ProjectItems({
   canEdit: boolean;
   addLineRef: RefObject<HangMucActions | null>;
   vatPercent: number | null;
-  onSauThue: (value: number | null) => void;
 }) {
   const [lines, setLines] = useState<Line[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Line | null>(null);
   const [copyHint, setCopyHint] = useState("");
+  const [importHint, setImportHint] = useState("");
+  const [dangNapFile, setDangNapFile] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
   const [baoLuu, setBaoLuu] = useState(false);
   const henTat = useRef<number | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  // thay_the = xóa cũ nạp mới; phu_luc = nối thêm vào danh sách hiện có.
+  const cheDoNapRef = useRef<"thay_the" | "phu_luc">("thay_the");
   const linesRef = useRef<Line[] | null>(null);
   const rowHeightsRef = useRef(rowHeights);
   const ngungKeo = useRef<(() => void) | null>(null);
@@ -209,18 +219,6 @@ export function ProjectItems({
       cancelled = true;
     };
   }, [projectId, canEdit, defaultOwnerId]);
-
-  useEffect(() => {
-    if (!lines) {
-      onSauThue(null);
-      return;
-    }
-    const truoc = tongTruocThue(lines);
-    const thue = tienThue(truoc, vatPercent);
-    onSauThue(thue === null ? null : truoc + thue);
-  }, [lines, vatPercent, onSauThue]);
-
-  useEffect(() => () => onSauThue(null), [onSauThue]);
 
   useEffect(() => () => {
     if (henTat.current) window.clearTimeout(henTat.current);
@@ -390,7 +388,76 @@ export function ProjectItems({
     pushLine(line);
   }
 
-  addLineRef.current = canEdit ? { add: addLine, copy: copyLine } : null;
+  function moChonFile(cheDo: "thay_the" | "phu_luc") {
+    if (dangNapFile) return;
+    setImportHint("");
+    cheDoNapRef.current = cheDo;
+    fileRef.current?.click();
+  }
+
+  function importFile() {
+    moChonFile("thay_the");
+  }
+
+  function importPhuLuc() {
+    moChonFile("phu_luc");
+  }
+
+  async function onChonFileHangMuc(file: File | null) {
+    if (!file || dangNapFile) return;
+    if (fileRef.current) fileRef.current.value = "";
+    const cheDo = cheDoNapRef.current;
+    const phuLuc = cheDo === "phu_luc";
+    setDangNapFile(true);
+    setImportHint(
+      phuLuc
+        ? `Đang thêm phụ lục «${file.name}» vào hạng mục hiện có...`
+        : `Đang nạp «${file.name}» (xóa hạng mục cũ)...`,
+    );
+    try {
+      const { hangMuc, bac } = await docHangMucTuExcel(file);
+      const payload = hangMuc.map((item, index) => ({
+        sortOrder: index + 1,
+        name: item.name,
+        spec: item.spec,
+        unit: item.unit,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        ownerId: defaultOwnerId,
+        note: item.note,
+      }));
+      const saved = await callApi<Item[]>(`/api/cong-trinh/${projectId}/hang-muc`, {
+        method: "PUT",
+        body: JSON.stringify({ items: payload, append: phuLuc }),
+      });
+      const moi = saved.map((row) => {
+        const line = fromItem(row);
+        line.status = "saved";
+        return line;
+      });
+      if (phuLuc) {
+        setLines((current) => {
+          const next = [...(current ?? []), ...moi];
+          linesRef.current = next;
+          return next;
+        });
+        setImportHint(`Đã thêm phụ lục: +${moi.length} hạng mục từ «${file.name}» (${nhanBacDonGia[bac]}).`);
+      } else {
+        setLines(moi);
+        linesRef.current = moi;
+        setImportHint(`Đã thay toàn bộ: nạp ${moi.length} hạng mục từ «${file.name}» (${nhanBacDonGia[bac]}).`);
+      }
+      baoThanhCong();
+      if (moi[0]) reveal(moi[0]);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Không đọc được file Excel.";
+      setImportHint(message);
+    } finally {
+      setDangNapFile(false);
+    }
+  }
+
+  addLineRef.current = canEdit ? { add: addLine, copy: copyLine, importFile, importPhuLuc } : null;
 
   const savedCount = lines?.filter((line) => line.id).length ?? 0;
   const soCot = 8 + (hienPhuTrach ? 1 : 0) + (canEdit ? 1 : 0);
@@ -399,14 +466,51 @@ export function ProjectItems({
   const truocThue = lines ? tongTruocThue(lines) : null;
   const thue = truocThue === null ? null : tienThue(truocThue, vatPercent);
   const sauThue = truocThue === null || thue === null ? null : truocThue + thue;
+  const thongKeHangMuc = truocThue === null
+    ? []
+    : [
+        ["Tổng cộng trước thuế", `${formatUnitPrice(truocThue)} ₫`] as const,
+        [
+          vatPercent === null ? "Thuế GTGT (VAT)" : `Thuế GTGT (VAT) ${vatPercent}%`,
+          thue === null ? "—" : `${formatUnitPrice(thue)} ₫`,
+        ] as const,
+        ["Tổng cộng sau thuế", sauThue === null ? "—" : `${formatUnitPrice(sauThue)} ₫`] as const,
+      ];
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">
-        {lines ? `${savedCount} hạng mục.` : "Đang tải hạng mục..."}
-        {canEdit ? " Gõ thẳng trên bảng, rời dòng là lưu." : ""}
-      </p>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+        className="hidden"
+        onChange={(event) => void onChonFileHangMuc(event.target.files?.[0] ?? null)}
+      />
+      <div className="sticky top-0 z-30 -mx-1 space-y-2 bg-white/95 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted">
+            {lines ? `${savedCount} hạng mục.` : "Đang tải hạng mục..."}
+            {canEdit ? " Gõ thẳng trên bảng, rời dòng là lưu." : ""}
+          </p>
+          {thongKeHangMuc.length > 0 ? (
+            <dl className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-line/70 bg-soft px-4 py-2 shadow-sm">
+              {thongKeHangMuc.map(([label, value]) => {
+                const Icon = label.startsWith("Thuế GTGT") ? Percent : label === "Tổng cộng sau thuế" ? Wallet : null;
+                const nhan = label === "Tổng cộng sau thuế";
+                return (
+                  <div key={label} className={cn("flex items-center gap-1.5", nhan ? "rounded-lg bg-primary/10 px-2 py-1 text-primary" : "")}>
+                    {Icon ? <Icon className="size-3.5 shrink-0" aria-hidden /> : null}
+                    <dt className={cn("text-xs", nhan ? "text-primary" : "text-muted")}>{label}</dt>
+                    <dd className={cn("text-sm font-semibold tabular-nums", nhan ? "text-primary" : "text-ink")}>{value}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          ) : null}
+        </div>
+      </div>
       {copyHint ? <p className="text-sm text-danger" role="alert">{copyHint}</p> : null}
+      {importHint ? <p className="text-sm text-amber-800" role="status">{importHint}</p> : null}
       {loadError ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loadError}</p> : null}
       <div className={listPanelClass}>
         <Table className="table-fixed">
@@ -560,6 +664,7 @@ export function ProjectItems({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>
   );
 }

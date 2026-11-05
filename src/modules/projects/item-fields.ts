@@ -16,7 +16,8 @@ export function parseQuantityMilli(value: unknown) {
 export function parseUnitPrice(value: unknown) {
   const raw = String(value ?? "").trim().replace(/\s/g, "").replace(/\./g, "");
   if (!raw) return 0;
-  if (!/^\d+$/.test(raw)) throw new AppError("Đơn giá không hợp lệ.", 400);
+  // Cho phép âm (dòng điều chỉnh trên file đơn giá).
+  if (!/^-?\d+$/.test(raw)) throw new AppError("Đơn giá không hợp lệ.", 400);
   const amount = Number(raw);
   if (!Number.isSafeInteger(amount)) throw new AppError("Đơn giá không hợp lệ.", 400);
   return amount;
@@ -43,5 +44,7 @@ export function formatQuantityMilli(value: number) {
 }
 
 export function formatUnitPrice(value: number) {
-  return Math.abs(Math.round(value)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const rounded = Math.round(value);
+  const body = Math.abs(rounded).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return rounded < 0 ? `-${body}` : body;
 }

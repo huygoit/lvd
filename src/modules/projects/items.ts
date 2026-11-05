@@ -150,3 +150,104 @@ export async function deleteProjectItem(user: User, projectId: string, itemId: s
     await writeAudit(tx, user.id, "xoa", "hang_muc", current.id, `Xóa hạng mục ${current.sortOrder} của ${project.code}`);
   });
 }
+
+async function parseHangMucInputs(projectOwnerId: string, inputs: ProjectItemInput[]) {
+  if (!Array.isArray(inputs) || inputs.length === 0) {
+    throw new AppError("File không có hạng mục để nạp.", 400);
+  }
+  const parsed = [];
+  for (let i = 0; i < inputs.length; i += 1) {
+    const data = await readInput({
+      ...inputs[i],
+      sortOrder: inputs[i]?.sortOrder ?? i + 1,
+      ownerId: inputs[i]?.ownerId || projectOwnerId,
+    });
+    parsed.push(data);
+  }
+  const orders = new Set(parsed.map((item) => item.sortOrder));
+  if (orders.size !== parsed.length) throw new AppError("Số thứ tự hạng mục bị trùng.", 400);
+  return parsed;
+}
+
+/** Xóa hết hạng mục cũ rồi nạp bộ mới (dùng khi import Excel). */
+export async function replaceProjectItems(user: User, projectId: string, inputs: ProjectItemInput[]) {
+  assertAny(user, ["projects.update", "projects.create"]);
+  const project = await visibleProject(user, projectId);
+  const parsed = await parseHangMucInputs(project.ownerId, inputs);
+
+  return prisma.$transaction(async (tx) => {
+    const cu = await tx.projectItem.deleteMany({ where: { projectId: project.id } });
+    const rows = [];
+    for (const data of parsed) {
+      const row = await tx.projectItem.create({
+        data: {
+          projectId: project.id,
+          sortOrder: data.sortOrder,
+          name: data.name,
+          spec: data.spec,
+          unit: data.unit,
+          quantityMilli: data.quantityMilli,
+          unitPrice: data.unitPrice,
+          ownerId: data.ownerId,
+          note: data.note,
+        },
+      });
+      rows.push(present(row, data.ownerName));
+    }
+    await writeAudit(
+      tx,
+      user.id,
+      "sua",
+      "cong_trinh",
+      project.id,
+      `Nạp lại hạng mục từ file: xóa ${cu.count}, thêm ${rows.length} của ${project.code}`,
+    );
+    return rows;
+  });
+}
+
+/** Thêm phụ lục: giữ hạng mục cũ, nối thêm dòng mới sau STT lớn nhất. */
+export async function appendProjectItems(user: User, projectId: string, inputs: ProjectItemInput[]) {
+  assertAny(user, ["projects.update", "projects.create"]);
+  const project = await visibleProject(user, projectId);
+  const cuoi = await prisma.projectItem.findFirst({
+    where: { projectId: project.id },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+  const batDau = (cuoi?.sortOrder ?? 0) + 1;
+  const withOrder = inputs.map((item, index) => ({
+    ...item,
+    sortOrder: batDau + index,
+  }));
+  const parsed = await parseHangMucInputs(project.ownerId, withOrder);
+
+  return prisma.$transaction(async (tx) => {
+    const rows = [];
+    for (const data of parsed) {
+      const row = await tx.projectItem.create({
+        data: {
+          projectId: project.id,
+          sortOrder: data.sortOrder,
+          name: data.name,
+          spec: data.spec,
+          unit: data.unit,
+          quantityMilli: data.quantityMilli,
+          unitPrice: data.unitPrice,
+          ownerId: data.ownerId,
+          note: data.note,
+        },
+      });
+      rows.push(present(row, data.ownerName));
+    }
+    await writeAudit(
+      tx,
+      user.id,
+      "sua",
+      "cong_trinh",
+      project.id,
+      `Thêm phụ lục hợp đồng: +${rows.length} hạng mục của ${project.code}`,
+    );
+    return rows;
+  });
+}
