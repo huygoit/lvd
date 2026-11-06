@@ -33,6 +33,7 @@ type Staff = { id: string; name: string };
 type Item = {
   id: string;
   sortOrder: number;
+  symbol: string;
   name: string;
   spec: string;
   unit: string;
@@ -48,6 +49,7 @@ type Line = {
   key: string;
   id: string;
   sortOrder: string;
+  symbol: string;
   name: string;
   spec: string;
   unit: string;
@@ -66,9 +68,10 @@ const caoToiThieu = 58;
 // Tạm ẩn cột phụ trách. Khi lưu vẫn gắn người phụ trách của công trình.
 const hienPhuTrach = false;
 
-function picture(line: Pick<Line, "sortOrder" | "name" | "spec" | "unit" | "quantity" | "unitPrice" | "ownerId" | "note">) {
+function picture(line: Pick<Line, "sortOrder" | "symbol" | "name" | "spec" | "unit" | "quantity" | "unitPrice" | "ownerId" | "note">) {
   return JSON.stringify({
     sortOrder: line.sortOrder.trim(),
+    symbol: line.symbol.trim(),
     name: line.name.trim(),
     spec: line.spec.trim(),
     unit: line.unit,
@@ -84,6 +87,7 @@ function fromItem(row: Item): Line {
     key: row.id,
     id: row.id,
     sortOrder: String(row.sortOrder),
+    symbol: row.symbol ?? "",
     name: row.name,
     spec: row.spec,
     unit: row.unit,
@@ -104,6 +108,7 @@ function blankLine(order: number, ownerId: string): Line {
     key: `moi-${order}-${Date.now()}`,
     id: "",
     sortOrder: String(order),
+    symbol: "",
     name: "",
     spec: "",
     unit: "m2",
@@ -156,7 +161,7 @@ function tienThue(truocThue: number, vatPercent: number | null) {
 }
 
 function isBlank(line: Line) {
-  return !line.id && !line.name.trim() && !line.spec.trim() && !line.quantity.trim() && !line.unitPrice.trim() && !line.note.trim();
+  return !line.id && !line.symbol.trim() && !line.name.trim() && !line.spec.trim() && !line.quantity.trim() && !line.unitPrice.trim() && !line.note.trim();
 }
 
 export type HangMucActions = {
@@ -279,6 +284,7 @@ export function ProjectItems({
     savingKeys.current.add(key);
     const payload = {
       sortOrder: line.sortOrder,
+      symbol: line.symbol,
       name: line.name,
       spec: line.spec,
       unit: line.unit,
@@ -378,6 +384,7 @@ export function ProjectItems({
       return;
     }
     const line = blankLine(nextOrder(linesRef.current ?? []), source.ownerId);
+    line.symbol = source.symbol;
     line.name = source.name;
     line.spec = source.spec;
     line.unit = source.unit;
@@ -418,6 +425,7 @@ export function ProjectItems({
       const { hangMuc, bac } = await docHangMucTuExcel(file);
       const payload = hangMuc.map((item, index) => ({
         sortOrder: index + 1,
+        symbol: item.symbol,
         name: item.name,
         spec: item.spec,
         unit: item.unit,
@@ -460,8 +468,8 @@ export function ProjectItems({
   addLineRef.current = canEdit ? { add: addLine, copy: copyLine, importFile, importPhuLuc } : null;
 
   const savedCount = lines?.filter((line) => line.id).length ?? 0;
-  const soCot = 8 + (hienPhuTrach ? 1 : 0) + (canEdit ? 1 : 0);
-  const cotTruocTien = 6;
+  const soCot = 9 + (hienPhuTrach ? 1 : 0) + (canEdit ? 1 : 0);
+  const cotTruocTien = 7;
   const cotSauTien = soCot - cotTruocTien - 1;
   const truocThue = lines ? tongTruocThue(lines) : null;
   const thue = truocThue === null ? null : tienThue(truocThue, vatPercent);
@@ -517,8 +525,9 @@ export function ProjectItems({
           <TableHeader>
             <TableRow className="bg-soft hover:bg-soft">
               <TableHead className="w-12 px-1 text-center">STT</TableHead>
-              <TableHead className="w-[30%]">Nội dung</TableHead>
-              <TableHead className="w-[34%]">Quy cách</TableHead>
+              <TableHead className="w-24">Ký hiệu</TableHead>
+              <TableHead className="w-[28%]">Nội dung</TableHead>
+              <TableHead className="w-[28%]">Quy cách</TableHead>
               <TableHead className="w-24">Đơn vị</TableHead>
               <TableHead className="w-24 text-right">Khối lượng</TableHead>
               <TableHead className="w-28 text-right">Đơn giá</TableHead>
@@ -555,12 +564,17 @@ export function ProjectItems({
                 </TableCell>
                 <TableCell className="align-top">
                   {canEdit ? (
+                    <input value={line.symbol} placeholder="D1, S1..." onChange={(event) => patch(line.key, { symbol: event.target.value })} onBlur={blur} className={cellClass} />
+                  ) : <span className={`${valueClass} font-medium`}>{line.symbol || "—"}</span>}
+                </TableCell>
+                <TableCell className="align-top">
+                  {canEdit ? (
                     <textarea value={line.name} rows={2} placeholder="Thêm nội dung..." onChange={(event) => patch(line.key, { name: event.target.value })} onBlur={blur} style={hopCao} className={`${cellClass} resize-none overflow-y-auto`} />
                   ) : <p style={hopCao} className="overflow-y-auto whitespace-pre-line font-medium text-ink">{line.name}</p>}
                 </TableCell>
                 <TableCell className="align-top">
                   {canEdit ? (
-                    <textarea value={line.spec} rows={2} placeholder="Mã hiệu, tiêu chuẩn..." onChange={(event) => patch(line.key, { spec: event.target.value })} onBlur={blur} style={hopCao} className={`${cellClass} resize-none overflow-y-auto`} />
+                    <textarea value={line.spec} rows={2} placeholder="Quy cách..." onChange={(event) => patch(line.key, { spec: event.target.value })} onBlur={blur} style={hopCao} className={`${cellClass} resize-none overflow-y-auto`} />
                   ) : <p style={hopCao} className="overflow-y-auto whitespace-pre-line text-sm text-muted">{line.spec || "—"}</p>}
                 </TableCell>
                 <TableCell className="align-top">

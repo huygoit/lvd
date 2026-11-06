@@ -13,6 +13,7 @@ import {
 
 export type ProjectItemInput = {
   sortOrder?: unknown;
+  symbol?: unknown;
   name?: unknown;
   spec?: unknown;
   unit?: unknown;
@@ -32,6 +33,7 @@ async function visibleProject(user: User, projectId: string) {
 function present(row: {
   id: string;
   sortOrder: number;
+  symbol: string;
   name: string;
   spec: string;
   unit: string;
@@ -43,6 +45,7 @@ function present(row: {
   return {
     id: row.id,
     sortOrder: row.sortOrder,
+    symbol: row.symbol,
     name: row.name,
     spec: row.spec,
     unit: row.unit,
@@ -63,6 +66,7 @@ async function readInput(input: ProjectItemInput) {
   if (!staff) throw new AppError("Chọn người phụ trách.", 400);
   return {
     sortOrder: parseSortOrder(input.sortOrder),
+    symbol: String(input.symbol ?? "").trim().slice(0, 120),
     name,
     spec: String(input.spec ?? "").trim(),
     unit: parseItemUnit(input.unit),
@@ -100,6 +104,7 @@ export async function createProjectItem(user: User, projectId: string, input: Pr
       data: {
         projectId: project.id,
         sortOrder: data.sortOrder,
+        symbol: data.symbol,
         name: data.name,
         spec: data.spec,
         unit: data.unit,
@@ -125,6 +130,7 @@ export async function updateProjectItem(user: User, projectId: string, itemId: s
     where: { id: current.id },
     data: {
       sortOrder: data.sortOrder,
+      symbol: data.symbol,
       name: data.name,
       spec: data.spec,
       unit: data.unit,
@@ -183,6 +189,7 @@ export async function replaceProjectItems(user: User, projectId: string, inputs:
         data: {
           projectId: project.id,
           sortOrder: data.sortOrder,
+          symbol: data.symbol,
           name: data.name,
           spec: data.spec,
           unit: data.unit,
@@ -229,6 +236,7 @@ export async function appendProjectItems(user: User, projectId: string, inputs: 
         data: {
           projectId: project.id,
           sortOrder: data.sortOrder,
+          symbol: data.symbol,
           name: data.name,
           spec: data.spec,
           unit: data.unit,

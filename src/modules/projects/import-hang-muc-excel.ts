@@ -2,16 +2,18 @@ import * as XLSX from "xlsx";
 import { canonMeasureUnit } from "@/shared/catalog/units";
 import { formatQuantityMilli, formatUnitPrice } from "@/modules/projects/item-fields";
 
-/** Ba bậc đơn giá trên file đơn giá nhôm LV Door. */
-export type BacDonGia = "ban_dau" | "l1" | "l2";
+/** Bậc đơn giá: 3 bậc LV Door hoặc cột «Đơn giá» thường trên báo giá. */
+export type BacDonGia = "ban_dau" | "l1" | "l2" | "don_gia";
 
 export const nhanBacDonGia: Record<BacDonGia, string> = {
   ban_dau: "Đơn giá ban đầu",
   l1: "Điều chỉnh L1",
   l2: "Điều chỉnh L2",
+  don_gia: "Đơn giá",
 };
 
 export type HangMucTuExcel = {
+  symbol: string;
   name: string;
   spec: string;
   unit: string;
@@ -27,6 +29,23 @@ export type KetQuaNapExcel = {
 
 type CotGia = { vatTu: number; nhanCong: number; tongDonGia: number; thanhTien: number };
 
+type CotCoBan = {
+  stt: number;
+  kyHieu: number;
+  ten: number;
+  quyCach: number;
+  quyCachCao: number;
+  donVi: number;
+  soLuong: number;
+  khoiLuong: number;
+  rong: number;
+  cao: number;
+  dienTich: number;
+  donGia: number;
+  thanhTien: number;
+  ghiChu: number;
+};
+
 function oChu(value: unknown) {
   return String(value ?? "").replace(/\r\n/g, "\n").replace(/\u00a0/g, " ").trim();
 }
@@ -40,10 +59,13 @@ function oSo(value: unknown) {
 }
 
 function dongTieuDe(row: unknown[]) {
-  const a = oChu(row[0]).toLocaleLowerCase("vi");
-  const b = oChu(row[1]).toLocaleLowerCase("vi");
-  const c = oChu(row[2]).toLocaleLowerCase("vi");
-  return a === "stt" || b.includes("ký hiệu") || c.includes("tên công tác");
+  for (const cell of row) {
+    const nhan = oChu(cell).toLocaleLowerCase("vi");
+    if (nhan === "stt") return true;
+    if (nhan === "kh" || nhan.includes("ký hiệu")) return true;
+    if (nhan.includes("tên công tác") || nhan.includes("chủng loại") || nhan.includes("nội dung")) return true;
+  }
+  return false;
 }
 
 function dongTong(row: unknown[]) {
@@ -118,7 +140,7 @@ function donGiaKhopThanhTien(thanhTien: number, quantityMilli: number) {
  * Ưu tiên cột thành tiền bậc đang hiện (kể cả âm), suy ra đơn giá khớp thành tiền.
  * Không có thành tiền thì lấy tổng đơn giá; rồi mới thử các bậc khác.
  */
-function layDonGia(
+function layDonGiaTheoBac(
   row: unknown[],
   quantityMilli: number,
   bacUuTien: BacDonGia,
@@ -139,49 +161,133 @@ function layDonGia(
   return 0;
 }
 
-function timCotCoBan(hang1: unknown[], hang2: unknown[]) {
+/** Báo giá thường: cột «Đơn giá» + «Thành tiền». */
+function layDonGiaDon(row: unknown[], quantityMilli: number, cot: CotCoBan): number {
+  if (cot.thanhTien >= 0) {
+    const thanhTien = oSo(row[cot.thanhTien]);
+    if (thanhTien !== null) return donGiaKhopThanhTien(thanhTien, quantityMilli);
+  }
+  if (cot.donGia >= 0) {
+    const donGia = oSo(row[cot.donGia]);
+    if (donGia !== null) return Math.round(donGia);
+  }
+  return 0;
+}
+
+function timCotCoBan(hang1: unknown[], hang2: unknown[]): CotCoBan {
   let stt = 0;
   let kyHieu = 1;
   let ten = 2;
+  let quyCach = -1;
+  let quyCachCao = -1;
   let donVi = 3;
-  let soLuong = 4;
-  let rong = 5;
-  let cao = 6;
-  let dienTich = 7;
-  let ghiChu = 23;
+  let soLuong = -1;
+  let khoiLuong = -1;
+  let rong = -1;
+  let cao = -1;
+  let dienTich = -1;
+  let donGia = -1;
+  let thanhTien = -1;
+  let ghiChu = -1;
 
   for (let i = 0; i < hang1.length; i += 1) {
-    const nhan = oChu(hang1[i]).toLocaleLowerCase("vi");
+    const nhan = oChu(hang1[i]).toLocaleLowerCase("vi").replace(/\s+/g, " ");
+    if (!nhan) continue;
     if (nhan === "stt") stt = i;
-    else if (nhan.includes("ký hiệu")) kyHieu = i;
-    else if (nhan.includes("tên công tác") || nhan.includes("nội dung")) ten = i;
-    else if (nhan === "đơn vị") donVi = i;
-    else if (nhan.includes("tổng số lượng") || nhan === "số lượng") soLuong = i;
+    else if (nhan === "kh" || nhan === "ký hiệu" || nhan.includes("ký hiệu")) kyHieu = i;
+    else if (
+      nhan.includes("chủng loại sản phẩm")
+      || nhan.includes("chủng loại")
+      || nhan.includes("tên công tác")
+      || nhan.includes("nội dung")
+    ) {
+      ten = i;
+    } else if (nhan.includes("quy cách")) quyCach = i;
+    // «Khối lượng…» phải trước «đơn vị» — tránh «Khối lượng đơn vị» bị nhận nhầm thành Đvt.
+    else if (nhan.includes("khối lượng")) khoiLuong = i;
+    else if (nhan === "đơn vị" || nhan.includes("đơn vị tính") || (nhan.includes("đơn vị") && !nhan.includes("giá"))) {
+      donVi = i;
+    } else if (nhan.includes("tổng số lượng") || nhan.includes("số lượng")) soLuong = i;
+    else if (nhan.includes("thành tiền")) thanhTien = i;
+    // «Đơn giá» thường — không lẫn nhóm «tổng đơn giá» của sheet 3 bậc.
+    else if (nhan.includes("đơn giá") && !nhan.includes("tổng đơn giá") && !nhan.includes("ban đầu")) donGia = i;
     else if (nhan.includes("ghi chú")) ghiChu = i;
   }
   for (let i = 0; i < hang2.length; i += 1) {
     const nhan = oChu(hang2[i]).toLocaleLowerCase("vi");
-    if (nhan.includes("rộng")) rong = i;
-    else if (nhan.includes("cao")) cao = i;
-    else if (nhan.startsWith("s (") || nhan === "s" || nhan.includes("(m2)")) dienTich = i;
+    if (nhan.startsWith("s (") || nhan === "s" || nhan.includes("(m2)")) dienTich = i;
+    else if (nhan.includes("rộng")) rong = i;
+    else if (nhan.includes("cao") && nhan !== "h") cao = i;
   }
-  return { stt, kyHieu, ten, donVi, soLuong, rong, cao, dienTich, ghiChu };
+  // Sheet BOQ: hàng phụ dưới «Quy cách (mm)» là W / H.
+  if (quyCach >= 0) {
+    const w = oChu(hang2[quyCach]).toLocaleLowerCase("vi");
+    const h = oChu(hang2[quyCach + 1] ?? "").toLocaleLowerCase("vi");
+    if (w === "w" || w.includes("rộng")) {
+      if (h === "h" || h.includes("cao")) quyCachCao = quyCach + 1;
+    }
+  }
+  return {
+    stt,
+    kyHieu,
+    ten,
+    quyCach,
+    quyCachCao,
+    donVi,
+    soLuong,
+    khoiLuong,
+    rong,
+    cao,
+    dienTich,
+    donGia,
+    thanhTien,
+    ghiChu,
+  };
 }
 
-/** Excel chỉ có một khối nội dung — đưa hết vào cột Nội dung, không tách Quy cách. */
-function catNoiDung(kyHieu: string, tenDay: string) {
+function chuanNoiDung(tenDay: string) {
   const than = tenDay
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean)
     .join("\n");
-  const name = kyHieu ? (than ? `${kyHieu} — ${than}` : kyHieu) : than || "Hạng mục";
-  return { name: name.slice(0, 8000), spec: "" };
+  return (than || "Hạng mục").slice(0, 8000);
 }
 
 /**
- * Đọc file đơn giá Excel thành hạng mục.
- * Tự lấy bậc đơn giá đang hiện (không ẩn cột); khối lượng = S(m2).
+ * Khối lượng: S(m2) → khối lượng đơn vị → số lượng.
+ * Sheet 3 bậc có cột S: thiếu S thì bỏ dòng (không lấy «số cái» làm KL).
+ */
+function layKhoiLuongMilli(row: unknown[], cot: CotCoBan, batBuocS = false): number | null {
+  if (cot.dienTich >= 0) {
+    const s = oSo(row[cot.dienTich]);
+    if (s !== null && s > 0) return Math.round(s * 1000);
+    if (batBuocS) return null;
+  }
+  if (cot.khoiLuong >= 0) {
+    const kl = oSo(row[cot.khoiLuong]);
+    if (kl !== null && kl > 0) return Math.round(kl * 1000);
+  }
+  if (cot.soLuong >= 0) {
+    const sl = oSo(row[cot.soLuong]);
+    if (sl !== null && sl > 0) return Math.round(sl * 1000);
+  }
+  return null;
+}
+
+function layQuyCach(row: unknown[], cot: CotCoBan): string {
+  if (cot.quyCach < 0) return "";
+  if (cot.quyCachCao >= 0) {
+    const rong = oSo(row[cot.quyCach]);
+    const cao = oSo(row[cot.quyCachCao]);
+    if (rong !== null && cao !== null) return `${rong}×${cao}`;
+  }
+  return oChu(row[cot.quyCach]).slice(0, 4000);
+}
+
+/**
+ * Đọc file đơn giá / báo giá Excel thành hạng mục.
+ * Hỗ trợ sheet 3 bậc (ban đầu/L1/L2) và báo giá cột «Đơn giá» thường.
  */
 export async function docHangMucTuExcel(file: File): Promise<KetQuaNapExcel> {
   const buffer = await file.arrayBuffer();
@@ -196,51 +302,83 @@ export async function docHangMucTuExcel(file: File): Promise<KetQuaNapExcel> {
   }) as unknown[][];
 
   let chiSoTieuDe = -1;
-  for (let i = 0; i < Math.min(rows.length, 10); i += 1) {
+  for (let i = 0; i < Math.min(rows.length, 20); i += 1) {
     if (dongTieuDe(rows[i] ?? [])) {
       chiSoTieuDe = i;
       break;
     }
   }
-  if (chiSoTieuDe < 0) throw new Error("Không nhận ra bảng đơn giá (thiếu dòng STT / Tên công tác).");
+  if (chiSoTieuDe < 0) throw new Error("Không nhận ra bảng hạng mục (thiếu dòng STT / KH / Nội dung).");
 
   const hang1 = rows[chiSoTieuDe] ?? [];
   const hang2 = rows[chiSoTieuDe + 1] ?? [];
-  const nhom = timNhomGia(hang1);
-  if (nhom.length === 0) throw new Error("Không tìm thấy cột đơn giá trên file.");
-  const { bac, tatCa } = chonBacDangHien(nhom, hang2, sheet["!cols"]);
   const cot = timCotCoBan(hang1, hang2);
+  const nhom = timNhomGia(hang1);
+
+  let bac: BacDonGia = "don_gia";
+  let tatCa: { bac: BacDonGia; gia: CotGia }[] = [];
+  let dungBacNhieu = false;
+
+  if (nhom.length > 0) {
+    const chon = chonBacDangHien(nhom, hang2, sheet["!cols"]);
+    bac = chon.bac;
+    tatCa = chon.tatCa;
+    dungBacNhieu = true;
+  } else if (cot.donGia < 0 && cot.thanhTien < 0) {
+    throw new Error("Không tìm thấy cột đơn giá trên file.");
+  }
 
   const hangMuc: HangMucTuExcel[] = [];
-  for (let i = chiSoTieuDe + 2; i < rows.length; i += 1) {
+  for (let i = chiSoTieuDe + 1; i < rows.length; i += 1) {
+    // Bỏ qua đúng 1 dòng phụ đề (W/H) nếu có; các dòng còn lại là dữ liệu.
+    if (i === chiSoTieuDe + 1) {
+      const phu = hang2.some((cell) => {
+        const nhan = oChu(cell).toLocaleLowerCase("vi");
+        return nhan === "w" || nhan === "h" || nhan.includes("rộng") || nhan.includes("cao") || nhan.includes("vật tư");
+      });
+      if (phu) continue;
+    }
+
     const row = rows[i] ?? [];
     if (dongTong(row)) continue;
 
     const kyHieu = oChu(row[cot.kyHieu]);
     const tenDay = oChu(row[cot.ten]);
     if (!kyHieu && !tenDay) continue;
-    // Bỏ dòng tiêu đề nhóm (không có ký hiệu, không có S).
-    if (!kyHieu && !oChu(row[cot.donVi])) continue;
 
-    const dienTich = oSo(row[cot.dienTich]);
-    if (dienTich === null || dienTich <= 0) continue;
-    const quantityMilli = Math.round(dienTich * 1000);
-    const donGia = layDonGia(row, quantityMilli, bac, tatCa);
+    const donViTho = oChu(row[cot.donVi]);
+    // Dòng nhóm (chỉ tên mục) — bỏ qua.
+    if (!kyHieu && !donViTho) continue;
 
-    const donViTho = oChu(row[cot.donVi]) || "m2";
-    const unit = canonMeasureUnit(donViTho) ?? canonMeasureUnit(donViTho.replace("²", "2")) ?? "m2";
-    const { name, spec } = catNoiDung(kyHieu, tenDay);
+    const quantityMilli = layKhoiLuongMilli(row, cot, dungBacNhieu && cot.dienTich >= 0);
+    if (quantityMilli === null || quantityMilli <= 0) continue;
 
-    const soCai = oSo(row[cot.soLuong]);
-    const rong = oSo(row[cot.rong]);
-    const cao = oSo(row[cot.cao]);
-    const ghiChuFile = oChu(row[cot.ghiChu]);
+    const donGia = dungBacNhieu
+      ? layDonGiaTheoBac(row, quantityMilli, bac, tatCa)
+      : layDonGiaDon(row, quantityMilli, cot);
+    if (donGia === 0 && (dungBacNhieu || cot.donGia < 0)) {
+      // Cho phép 0 nếu có thành tiền suy ra; còn không thì bỏ dòng nhóm có KL nhưng không giá.
+      const coGia = dungBacNhieu
+        || (cot.donGia >= 0 && oSo(row[cot.donGia]) !== null)
+        || (cot.thanhTien >= 0 && oSo(row[cot.thanhTien]) !== null);
+      if (!coGia) continue;
+    }
+
+    const unit = canonMeasureUnit(donViTho || "m2") ?? canonMeasureUnit((donViTho || "m2").replace("²", "2")) ?? "m2";
+    const name = chuanNoiDung(tenDay);
+    const spec = layQuyCach(row, cot);
+
+    const soCai = cot.soLuong >= 0 ? oSo(row[cot.soLuong]) : null;
+    const rong = cot.rong >= 0 ? oSo(row[cot.rong]) : cot.quyCach >= 0 ? oSo(row[cot.quyCach]) : null;
+    const cao = cot.cao >= 0 ? oSo(row[cot.cao]) : cot.quyCachCao >= 0 ? oSo(row[cot.quyCachCao]) : null;
+    const ghiChuFile = cot.ghiChu >= 0 ? oChu(row[cot.ghiChu]) : "";
     const phu: string[] = [];
-    if (soCai !== null) phu.push(`Số lượng: ${soCai} cái`);
-    if (rong !== null && cao !== null) phu.push(`KT: ${rong}×${cao} m`);
+    if (soCai !== null) phu.push(`Số lượng: ${soCai}`);
+    if (rong !== null && cao !== null && !spec.includes("×")) phu.push(`KT: ${rong}×${cao}`);
     if (ghiChuFile) phu.push(ghiChuFile);
 
     hangMuc.push({
+      symbol: kyHieu.slice(0, 120),
       name,
       spec,
       unit,
