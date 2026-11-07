@@ -16,7 +16,6 @@ import { QuoteEditor } from "@/modules/quotations/editor";
 import { QuoteRowActions, QuoteSheet } from "@/modules/quotations/quote-sheet";
 import { getQuotation, listQuotations } from "@/modules/quotations/service";
 import { listProjects } from "@/modules/projects/service";
-import { listQuoteCategories } from "@/modules/settings/categories";
 
 export const metadata: Metadata = { title: "Báo giá" };
 
@@ -63,9 +62,8 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
       const editable = version.internalStatus === "nhap" || version.internalStatus === "yeu_cau_chinh";
       const customers = hasAnyCapability(user, ["customers.view", "customers.view.assigned"]) ? await customerOptions(user) : [];
       const projects = hasAnyCapability(user, ["projects.view", "projects.view.assigned"]) ? await listProjects(user, {}) : [];
-      const categories = await listQuoteCategories();
       sheet = (
-        <QuoteSheet title={`${detail.code} · phiên bản ${version.number}`} description={`${detail.customer.name} · ${detail.project.name}`}>
+        <QuoteSheet>
           <QuoteEditor
             key={`${version.id}-${version.revision}`}
             sheet
@@ -74,17 +72,15 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
             customerName={detail.customer.name}
             projectName={detail.project.name}
             today={todayYmd(new Date())}
-            staff={detail.staff}
             customers={customers}
             projects={projects.map((item) => ({ id: item.id, customerId: item.customerId, code: item.code, name: item.name }))}
             versions={detail.versions.map((item) => ({ id: item.id, number: item.number }))}
-            categories={categories}
             flags={{
               edit: editable && hasAnyCapability(user, ["quotations.update", "quotations.create"]),
               submit: editable && hasAnyCapability(user, ["quotations.submit", "quotations.create"]),
               withdraw: version.internalStatus === "cho_duyet" && hasAnyCapability(user, ["quotations.withdraw", "quotations.submit"]),
-              approve: version.internalStatus === "cho_duyet" && hasCapability(user, "quotations.approve") && version.authorId !== user.id,
-              requestChange: version.internalStatus === "cho_duyet" && hasAnyCapability(user, ["quotations.request_change", "quotations.approve"]) && version.authorId !== user.id,
+              approve: version.internalStatus === "cho_duyet" && hasCapability(user, "quotations.approve"),
+              requestChange: version.internalStatus === "cho_duyet" && hasAnyCapability(user, ["quotations.request_change", "quotations.approve"]),
               deliver: version.internalStatus === "da_duyet" && hasAnyCapability(user, ["quotations.deliver", "quotations.create"]),
               respond: version.internalStatus === "da_duyet" && version.deliveries.length > 0 && hasAnyCapability(user, ["quotations.respond", "quotations.create"]),
               version: hasAnyCapability(user, ["quotations.version", "quotations.create"]),
@@ -102,17 +98,9 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
               ownerId: version.ownerId,
               internalStatus: version.internalStatus,
               customerStatus: version.customerStatus,
-              receiverName: version.receiverName,
-              receiverTitle: version.receiverTitle,
-              receiverPhone: version.receiverPhone,
-              receiverEmail: version.receiverEmail,
-              scheduleText: version.scheduleText,
-              paymentTerms: version.paymentTerms,
-              deliveryTerms: version.deliveryTerms,
-              warrantyTerms: version.warrantyTerms,
-              includedScope: version.includedScope,
-              excludedScope: version.excludedScope,
-              note: version.note,
+              constructionTime: version.constructionTime,
+              internalNote: version.internalNote,
+              quoteNote: version.quoteNote ?? "",
               taxBps: version.taxBps,
               warrantyMonths: version.warrantyMonths,
               advanceAmount: version.advanceAmount,
@@ -122,16 +110,16 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
               items: version.items.map((item) => ({
                 id: item.id,
                 sourceItemId: item.sourceItemId,
-                groupKey: item.groupKey,
+                calcMethod: item.calcMethod,
+                positionCode: item.positionCode,
                 name: item.name,
-                spec: item.spec,
                 unit: item.unit,
                 widthMm: item.widthMm,
                 heightMm: item.heightMm,
                 quantity: item.quantity,
+                areaOverrideMilli: item.areaOverrideMilli,
                 mainUnitPrice: item.mainUnitPrice,
-                accessoryUnitPrice: item.accessoryUnitPrice,
-                note: item.note,
+                pretax: item.pretax,
               })),
               files: version.files,
               approvals: version.approvals.map((item) => ({ id: item.id, action: item.action, reason: item.reason, actorId: item.actorId, createdAt: item.createdAt })),
@@ -176,8 +164,8 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
                 <TableHead>Mã</TableHead>
                 <TableHead>Khách hàng</TableHead>
                 <TableHead>Công trình</TableHead>
-                <TableHead>Nội bộ</TableHead>
-                <TableHead>Khách</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead>Khách phản hồi</TableHead>
                 <TableHead>Ngày</TableHead>
                 <TableHead className="text-right">Thành tiền</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>

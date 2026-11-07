@@ -35,29 +35,44 @@ async function main() {
   for (const item of staff) {
     await prisma.staff.upsert({ where: { id: item.id }, update: { name: item.name, active: true }, create: item });
   }
-  // Hạng mục và đơn vị lấy từ cột Nội dung, Đơn vị tính trên sheet Báo giá. Bỏ hậu tố "(Hạng mục n)" vì đó là số dòng của hồ sơ mẫu.
+  // Cây nhóm + hạng mục mẫu (copy sang báo giá khi lập).
+  const groupSeed = [
+    { id: "nhom-cua-nhom", parentId: null as string | null, name: "Cửa nhôm kính", sortOrder: 1 },
+    { id: "nhom-vach-kinh", parentId: null, name: "Vách kính", sortOrder: 2 },
+    { id: "nhom-cua-cuon", parentId: null, name: "Cửa cuốn", sortOrder: 3 },
+    { id: "nhom-chong-chay", parentId: null, name: "Cửa chống cháy", sortOrder: 4 },
+    { id: "nhom-composite", parentId: null, name: "Cửa composite", sortOrder: 5 },
+    { id: "nhom-lan-can", parentId: null, name: "Lan can kính", sortOrder: 6 },
+  ];
+  for (const group of groupSeed) {
+    await prisma.quoteCategoryGroup.upsert({
+      where: { id: group.id },
+      update: { name: group.name, parentId: group.parentId, sortOrder: group.sortOrder, active: true },
+      create: { ...group, active: true },
+    });
+  }
   await prisma.quoteCategory.deleteMany({
     where: { id: { in: ["cua_nhom_kinh", "vach_kinh", "lan_can_kinh", "cua_cuon", "cua_chong_chay", "cua_inox", "cua_nhua", "khac"] } },
   });
   const categories = [
-    { id: "hm-cua-di-nhom", name: "Cửa đi 2 cánh mở quay, nhôm hệ 55, kính cường lực 8mm", unit: "bộ", sortOrder: 1 },
-    { id: "hm-cua-so-nhom", name: "Cửa sổ 4 cánh mở trượt, nhôm hệ 55, kính cường lực 8mm", unit: "bộ", sortOrder: 2 },
-    { id: "hm-vach-kinh", name: "Vách kính cố định, nhôm hệ 55, kính cường lực 10mm", unit: "bộ", sortOrder: 3 },
-    { id: "hm-cua-cuon-mo-to", name: "Cửa cuốn nan nhôm có mô tơ", unit: "bộ", sortOrder: 4 },
-    { id: "hm-cua-cuon-khe-thoang", name: "Cửa cuốn nan nhôm khe thoáng", unit: "bộ", sortOrder: 5 },
-    { id: "hm-chong-chay-1", name: "Cửa thép chống cháy EI60, 1 cánh", unit: "bộ", sortOrder: 6 },
-    { id: "hm-chong-chay-2", name: "Cửa thép chống cháy EI60, 2 cánh", unit: "bộ", sortOrder: 7 },
-    { id: "hm-composite", name: "Cửa đi Composite 1 cánh, cánh dày 40 mm, phủ film PVC vân gỗ", unit: "bộ", sortOrder: 8 },
-    { id: "hm-khuon-composite", name: "Khuôn cửa Composite đồng bộ, nẹp, gioăng, vật tư phụ", unit: "bộ", sortOrder: 9 },
-    { id: "hm-lan-can-10ly", name: "Cung cấp lắp đặt lan can kính cường lực dày 10ly, phụ kiện Inox 304", unit: "m2", sortOrder: 10 },
-    { id: "hm-vach-cua-kinh", name: "Cung cấp lắp đặt vách kính kết hợp cửa kính 10ly cường lực, phụ kiện Inox 304", unit: "bộ", sortOrder: 11 },
-    { id: "hm-lan-can-ban-cong", name: "Cung cấp lắp đặt lan can kính ban công ngoài nhà, cao 950, hở chân 50, tay vịn Inox 304 50x50x1.4", unit: "m2", sortOrder: 12 },
+    { id: "hm-cua-di-nhom", groupId: "nhom-cua-nhom", name: "Cửa đi 2 cánh mở quay, nhôm hệ 55, kính cường lực 8mm", unit: "bộ", sortOrder: 1 },
+    { id: "hm-cua-so-nhom", groupId: "nhom-cua-nhom", name: "Cửa sổ 4 cánh mở trượt, nhôm hệ 55, kính cường lực 8mm", unit: "bộ", sortOrder: 2 },
+    { id: "hm-vach-kinh", groupId: "nhom-vach-kinh", name: "Vách kính cố định, nhôm hệ 55, kính cường lực 10mm", unit: "bộ", sortOrder: 1 },
+    { id: "hm-vach-cua-kinh", groupId: "nhom-vach-kinh", name: "Cung cấp lắp đặt vách kính kết hợp cửa kính 10ly cường lực, phụ kiện Inox 304", unit: "bộ", sortOrder: 2 },
+    { id: "hm-cua-cuon-mo-to", groupId: "nhom-cua-cuon", name: "Cửa cuốn nan nhôm có mô tơ", unit: "bộ", sortOrder: 1 },
+    { id: "hm-cua-cuon-khe-thoang", groupId: "nhom-cua-cuon", name: "Cửa cuốn nan nhôm khe thoáng", unit: "bộ", sortOrder: 2 },
+    { id: "hm-chong-chay-1", groupId: "nhom-chong-chay", name: "Cửa thép chống cháy EI60, 1 cánh", unit: "bộ", sortOrder: 1 },
+    { id: "hm-chong-chay-2", groupId: "nhom-chong-chay", name: "Cửa thép chống cháy EI60, 2 cánh", unit: "bộ", sortOrder: 2 },
+    { id: "hm-composite", groupId: "nhom-composite", name: "Cửa đi Composite 1 cánh, cánh dày 40 mm, phủ film PVC vân gỗ", unit: "bộ", sortOrder: 1 },
+    { id: "hm-khuon-composite", groupId: "nhom-composite", name: "Khuôn cửa Composite đồng bộ, nẹp, gioăng, vật tư phụ", unit: "bộ", sortOrder: 2 },
+    { id: "hm-lan-can-10ly", groupId: "nhom-lan-can", name: "Cung cấp lắp đặt lan can kính cường lực dày 10ly, phụ kiện Inox 304", unit: "m2", sortOrder: 1 },
+    { id: "hm-lan-can-ban-cong", groupId: "nhom-lan-can", name: "Cung cấp lắp đặt lan can kính ban công ngoài nhà, cao 950, hở chân 50, tay vịn Inox 304 50x50x1.4", unit: "m2", sortOrder: 2 },
   ];
   for (const item of categories) {
     await prisma.quoteCategory.upsert({
       where: { id: item.id },
-      update: { unit: item.unit },
-      create: { ...item, active: true },
+      update: { groupId: item.groupId, unit: item.unit, sortOrder: item.sortOrder },
+      create: { ...item, unitPrice: 0, active: true },
     });
   }
   // Danh mục chức danh — local đã có tay; VPS seed lần đầu / bổ sung thiếu.

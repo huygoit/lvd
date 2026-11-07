@@ -428,6 +428,15 @@ const groups: GroupDef[] = [
         caps: ["settings.manage"],
       },
       {
+        id: "bieu-mau-bao-gia",
+        label: "Mẫu báo giá",
+        icon: "file-spreadsheet",
+        href: routes.quoteTemplate,
+        module: "system",
+        ready: true,
+        caps: ["settings.manage"],
+      },
+      {
         id: "vai-tro",
         label: "Vai trò và quyền",
         icon: "shield",

@@ -485,27 +485,32 @@ model QuotationVersion {
   sourceVersionId       String?
   copiedFromVersionId   String?
   changeReason          String   @default("")
+  // Hạng mục báo giá (câu dẫn bản in) — lấy tên công trình khi tạo.
   title                 String   @default("")
   quoteDate             String
   validUntil            String
   authorId              String
   ownerId               String
-  receiverName          String   @default("")
-  receiverTitle         String   @default("")
-  receiverPhone         String   @default("")
-  receiverEmail         String   @default("")
-  scheduleText          String   @default("")
+  // Thời gian thi công (vd: "15 ngày kể từ ngày ký").
+  constructionTime      String   @default("") @map("scheduleText")
+  // Các trường chữ dưới đây đồng bộ từ số khi lưu — dùng khi tạo hợp đồng / bản cũ.
   paymentTerms          String   @default("")
   deliveryTerms         String   @default("")
   warrantyTerms         String   @default("")
   includedScope         String   @default("")
   excludedScope         String   @default("")
-  note                  String   @default("")
+  // Ghi chú nội bộ — không in ra khách.
+  internalNote          String   @default("") @map("note")
+  // Ghi chú in ra khách trên bản báo giá (mục Ghi chú).
+  quoteNote             String   @default("")
   customerName          String   @default("")
   customerTaxCode       String   @default("")
   customerAddress       String   @default("")
   customerPhone         String   @default("")
   customerEmail         String   @default("")
+  // Đại diện / chức vụ phía khách — snapshot lúc lập báo giá.
+  customerRepresentativeName  String @default("")
+  customerRepresentativeTitle String @default("")
   projectName           String   @default("")
   projectLocation       String   @default("")
   companyName           String   @default("")
@@ -514,10 +519,16 @@ model QuotationVersion {
   companyPhone          String   @default("")
   companyEmail          String   @default("")
   representativeName    String   @default("")
+  // Chức vụ đại diện công ty Liên Việt Door.
+  representativeTitle   String   @default("")
   taxBps                Int      @default(1000)
+  // 0 = không áp dụng bảo hành (câu in cố định).
   warrantyMonths        Int      @default(0)
+  // 0 = không thu tạm ứng.
   advanceAmount         Int      @default(0)
+  // Số ngày làm việc để tạm ứng (chỉ dùng khi advanceAmount > 0).
   advanceDays           Int      @default(0)
+  // Số ngày thanh toán sau nghiệm thu.
   paymentDays           Int      @default(0)
   internalStatus        String   @default("nhap")
   customerStatus        String   @default("chua_gui")
@@ -544,6 +555,7 @@ model QuotationItem {
   sourceItemId        String?
   sortOrder           Int
   groupKey            String
+  // Ký hiệu vị trí (D1, S1…).
   positionCode        String @default("")
   name                String
   spec                String @default("")
@@ -553,6 +565,8 @@ model QuotationItem {
   heightMm            Int?
   lengthMm            Int?
   quantity            Int
+  // Khối lượng m² ×1000 do người nhập đè. Null = tính từ rộng × cao × số lượng.
+  areaOverrideMilli   Int?
   mainUnitPrice       Int
   accessorySeparate   Boolean @default(false)
   accessoryUnitPrice  Int     @default(0)
@@ -627,14 +641,51 @@ model Attachment {
   @@index([entityType, entityId])
 }
 
-model QuoteCategory {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  unit      String   @default("bộ")
+// Nhóm hạng mục báo giá — cây thư mục cha/con.
+model QuoteCategoryGroup {
+  id        String               @id @default(cuid())
+  parentId  String?
+  parent    QuoteCategoryGroup?  @relation("QuoteCategoryGroupTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  QuoteCategoryGroup[] @relation("QuoteCategoryGroupTree")
+  name      String
   sortOrder Int
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  active    Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  categories QuoteCategory[]
+
+  @@index([parentId, sortOrder])
+}
+
+model QuoteCategory {
+  id        String              @id @default(cuid())
+  groupId   String
+  group     QuoteCategoryGroup  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  name      String              @unique
+  unit      String              @default("bộ")
+  // Đơn giá tham chiếu (đồng) — copy sang báo giá khi chọn hạng mục.
+  unitPrice Int                 @default(0)
+  sortOrder Int
+  active    Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([groupId, sortOrder])
+}
+
+// Biểu mẫu Excel báo giá — file gốc + sheet dùng để đổ biến.
+model QuoteTemplate {
+  id         String   @id @default(cuid())
+  name       String
+  fileName   String
+  // Đường dẫn tương đối trong storage/ (vd: bieu-mau/bao-gia/xxx.xlsx).
+  storedName String
+  sheetName  String   @default("2212")
+  // true = mẫu đang dùng khi xuất báo giá.
+  active     Boolean  @default(false)
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model JobTitle {

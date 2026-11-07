@@ -257,7 +257,7 @@ export async function createFromQuotation(user: User, versionId: string, kind = 
         scopeText: version.includedScope,
         paymentText: version.paymentTerms,
         warrantyText: version.warrantyTerms,
-        note: version.note,
+        note: version.internalNote,
         lines: {
           create: version.items.map((item, index) => ({
             kind: "ky_hieu",

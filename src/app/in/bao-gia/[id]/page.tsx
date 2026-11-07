@@ -1,16 +1,24 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/shared/auth/session";
+import { hasAnyCapability, hasCapability } from "@/shared/auth/types";
 import { formatCount } from "@/shared/lib/money";
 import { readVnd } from "@/shared/lib/vnd-words";
 import { rethrowPage } from "@/shared/page";
-import { placeAndDate, printCode, quoteClauses, quoteIntro } from "@/modules/quotations/document";
-import { PrintButton } from "@/modules/quotations/print-button";
+import { areaFromSizeMilli, formatAreaMilli } from "@/modules/quotations/calc";
+import {
+  hieuLucHeader,
+  labeledLine,
+  pickText,
+  placeAndDate,
+  printCode,
+} from "@/modules/quotations/document";
+import { PrintFooter } from "@/modules/quotations/print-button";
 import { getQuotation } from "@/modules/quotations/service";
+import { companyLogoDataUrl, companyParty } from "@/modules/settings/company-profile";
 
-export const metadata: Metadata = { title: "In báo giá" };
+export const metadata: Metadata = { title: "Xem báo giá PDF" };
 
 export default function Page({
   params,
@@ -34,6 +42,21 @@ function blank(value: number | null) {
   return value ? formatCount(value) : "";
 }
 
+function khoiLuongIn(item: {
+  widthMm: number | null;
+  heightMm: number | null;
+  quantity: number;
+  areaOverrideMilli: number | null;
+}) {
+  if (item.areaOverrideMilli != null && item.areaOverrideMilli > 0) {
+    return formatAreaMilli(item.areaOverrideMilli);
+  }
+  if (item.widthMm && item.heightMm && item.quantity) {
+    return formatAreaMilli(areaFromSizeMilli(item.widthMm, item.heightMm, item.quantity));
+  }
+  return "";
+}
+
 async function Body({
   params,
   searchParams,
@@ -54,120 +77,208 @@ async function Body({
   const version = detail.versions.find((item) => item.id === one(query.v)) ?? detail.versions[0];
   if (!version) notFound();
   const draft = version.internalStatus !== "da_duyet";
-  const author = detail.staff.find((item) => item.id === version.authorId)?.name ?? "";
-  const clauses = quoteClauses(version);
+  const author = version.authorName;
+  const hieuLuc = hieuLucHeader(version.quoteDate, version.validUntil);
+  // Snapshot trống (báo giá cũ) thì lấy từ hồ sơ khách / công ty để bản in đủ Đại diện, Chức vụ.
+  const party = await companyParty();
+  const tenCongTy = pickText(version.companyName, party.name) || "Công ty TNHH Liên Việt Door";
+  const ctyDaiDien = pickText(version.representativeName, party.representativeName);
+  const ctyChucVu = pickText(version.representativeTitle, party.representativeTitle);
+  const khachDaiDien = pickText(version.customerRepresentativeName, detail.customer.representativeName);
+  const khachChucVu = pickText(version.customerRepresentativeTitle, detail.customer.representativeTitle);
+  const dongCtyDaiDien = labeledLine("Đại diện", ctyDaiDien);
+  const dongCtyChucVu = labeledLine("Chức vụ", ctyChucVu);
+  const dongKhachDaiDien = labeledLine("Đại diện", khachDaiDien);
+  const dongKhachChucVu = labeledLine("Chức vụ", khachChucVu);
+  const congTrinh = labeledLine("Công trình", version.projectName);
+  const hangMuc = labeledLine("Hạng mục", version.title);
+  const ghiChu = String(version.quoteNote ?? "").trim();
   const spoken = version.totals.retail ? version.totals.pretax : version.totals.posttax;
   const words = version.totals.retail
     ? `Bằng chữ: ${readVnd(spoken)}.`
     : `Bằng chữ (tổng cộng đã gồm thuế): ${readVnd(spoken)}.`;
+  const logoUrl = await companyLogoDataUrl();
+  const isAuthor = version.authorId === user.id;
+  // Ai có quyền duyệt đều thấy nút Duyệt khi đang chờ (kể cả người lập).
+  const allowApprove = version.internalStatus === "cho_duyet" && hasCapability(user, "quotations.approve");
+  // Người lập và người duyệt/gửi đều thấy nút Zalo + email sau khi đã duyệt.
+  const allowSend =
+    isAuthor ||
+    hasCapability(user, "quotations.approve") ||
+    hasAnyCapability(user, ["quotations.deliver", "quotations.create"]);
+  const recipientName =
+    pickText(version.customerRepresentativeName, detail.customer.representativeName) || detail.customer.name;
   return (
-    <main className="mx-auto max-w-[210mm] bg-white px-8 py-8 text-ink shadow-[var(--shadow-card)] print:shadow-none">
+    <main className="phieu-in mx-auto max-w-[210mm] bg-white px-8 py-8 pb-28 text-ink shadow-[var(--shadow-card)] print:max-w-none print:px-0 print:py-0 print:pb-0 print:shadow-none">
       <style>{`
+        /* Font hệ thống: Chrome Save as PDF không nhúng được Inter biến thiên (Type3) → nhiều máy mở PDF bị lỗi. */
+        .phieu-in, .phieu-in * { font-family: "Segoe UI", Arial, Helvetica, sans-serif !important; }
         @page { size: A4; margin: 12mm; }
-        @media print { .no-print { display: none !important; } }
+        @media print {
+          html, body { background: #fff !important; }
+          .no-print, nextjs-portal, [data-nextjs-dialog-overlay], [data-nextjs-toast] { display: none !important; }
+          .phieu-in { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+        .sheet { position: relative; }
         .sheet table { width: 100%; border-collapse: collapse; font-size: 11px; }
         .sheet th, .sheet td { border: 1px solid #cbd5e1; padding: 4px 5px; vertical-align: top; }
         .sheet th { background: #067a9e; color: white; font-weight: 600; text-align: center; }
         .sheet .num { text-align: right; white-space: nowrap; }
         .sheet .sum td { font-weight: 700; background: #f8fafc; }
-        .watermark { position: fixed; inset: 35% 8%; z-index: 1; display: flex; align-items: center; justify-content: center; font-size: 72px; font-weight: 700; color: rgba(185, 28, 28, 0.16); transform: rotate(-22deg); pointer-events: none; }
+        /* absolute trong sheet, tránh position:fixed + rotate làm PDF lệch/hỏng trên một số máy. */
+        .watermark { position: absolute; left: 8%; right: 8%; top: 28%; z-index: 1; text-align: center; font-size: 64px; font-weight: 700; color: rgba(185, 28, 28, 0.14); transform: rotate(-22deg); pointer-events: none; user-select: none; }
       `}</style>
-      {draft ? <div className="watermark">BẢN NHÁP</div> : null}
-      <div className="no-print mb-4 flex gap-2">
-        <Link href={`/bao-gia/${detail.id}?v=${version.id}`} className="text-sm font-semibold text-primary">Về báo giá</Link>
-        <PrintButton />
-      </div>
+      <PrintFooter
+        backHref={`/bao-gia?mo=sua&id=${detail.id}&v=${version.id}`}
+        quotationId={detail.id}
+        versionId={version.id}
+        revision={version.revision}
+        code={detail.code}
+        customerName={detail.customer.name}
+        customerEmail={pickText(version.customerEmail, detail.customer.email)}
+        customerPhone={version.customerPhone}
+        recipientName={recipientName}
+        internalStatus={version.internalStatus}
+        allowApprove={allowApprove}
+        allowSend={allowSend}
+      />
       <article className="sheet">
+        {draft ? <div className="watermark" aria-hidden="true">BẢN NHÁP</div> : null}
         <header className="flex items-start justify-between gap-6 border-b-2 border-navy pb-3">
-          <div>
-            <p className="text-base font-bold tracking-wide text-navy">{version.companyName}</p>
-            <p className="mt-1 text-xs">{version.companyAddress}</p>
-            <p className="text-xs">MST: {version.companyTaxCode} – ĐT: {version.companyPhone}</p>
-            <p className="text-xs">Email: {version.companyEmail}</p>
+          <div className="flex min-w-0 items-start gap-3">
+            {logoUrl ? (
+              // Logo từ hồ sơ công ty, nhúng base64 để in ổn định.
+              <img src={logoUrl} alt="" className="h-14 w-auto max-w-[7rem] shrink-0 object-contain" />
+            ) : null}
+            <div className="min-w-0">
+              <p className="text-base font-bold tracking-wide text-navy">{version.companyName}</p>
+              <p className="mt-1 text-xs">{version.companyAddress}</p>
+              <p className="text-xs">
+                MST: {version.companyTaxCode} – ĐT: {version.companyPhone}
+              </p>
+              <p className="text-xs">Email: {version.companyEmail}</p>
+            </div>
           </div>
-          <p className="shrink-0 text-right text-xs">{placeAndDate(version.quoteDate)}</p>
+          <div className="shrink-0 space-y-1 text-right text-xs leading-relaxed">
+            <p>{placeAndDate(version.quoteDate)}</p>
+            {hieuLuc ? <p className="font-medium text-navy">{hieuLuc}</p> : null}
+            {author ? <p>Người lập: {author}</p> : null}
+          </div>
         </header>
         <h1 className="mt-5 text-center text-xl font-bold tracking-wide text-navy">BẢNG BÁO GIÁ</h1>
         <p className="text-center text-sm font-semibold">Số: {printCode(detail.customer.code)}</p>
-        <p className="mt-4 text-sm">Kính gửi: {version.customerName}</p>
-        <p className="text-sm">Địa chỉ: {version.customerAddress}</p>
-        <p className="mt-3 text-sm">{quoteIntro(version.title, version.projectLocation)}</p>
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-0.5 text-sm leading-relaxed">
+          <p className="col-span-2">
+            Kính gửi: <span className="font-bold">{version.customerName}</span>
+          </p>
+          {dongKhachDaiDien ? <p>{dongKhachDaiDien}</p> : null}
+          {dongKhachChucVu ? <p>{dongKhachChucVu}</p> : null}
+          {version.customerAddress.trim() ? (
+            <p className="col-span-2">Địa chỉ: {version.customerAddress}</p>
+          ) : null}
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-0.5 text-sm leading-relaxed">
+          <p className="col-span-2 font-medium">{tenCongTy}</p>
+          {dongCtyDaiDien ? <p>{dongCtyDaiDien}</p> : null}
+          {dongCtyChucVu ? <p>{dongCtyChucVu}</p> : null}
+        </div>
+        <p className="mt-3 text-sm">Xin gửi báo giá với thông tin như sau:</p>
+        {congTrinh ? <p className="text-sm">{congTrinh}</p> : null}
+        {hangMuc ? <p className="text-sm">{hangMuc}</p> : null}
         <table className="mt-3">
           <thead>
             <tr>
               <th>STT</th>
-              <th>Nội dung / Hạng mục</th>
+              <th>Ký hiệu</th>
+              <th>Nội dung</th>
               <th>Đơn vị tính</th>
-              <th>Chiều rộng (mm)</th>
-              <th>Chiều cao (mm)</th>
-              <th>Số lượng (bộ)</th>
-              <th>Đơn giá cửa (VND)</th>
-              <th>Đơn giá phụ kiện (VND)</th>
-              <th>Thành tiền trước thuế (VND)</th>
-              <th>Ghi chú</th>
+              <th>Rộng (mm)</th>
+              <th>Cao (mm)</th>
+              <th>Số lượng</th>
+              <th>Khối lượng (m2)</th>
+              <th>Đơn giá</th>
+              <th>Thành tiền</th>
             </tr>
           </thead>
           <tbody>
-            {version.items.map((item, index) => (
-              <tr key={item.id}>
-                <td className="num">{index + 1}</td>
-                <td>{item.name}</td>
-                <td>{item.unit}</td>
-                <td className="num">{blank(item.widthMm)}</td>
-                <td className="num">{blank(item.heightMm)}</td>
-                <td className="num">{formatCount(item.quantity)}</td>
-                <td className="num">{formatCount(item.mainUnitPrice)}</td>
-                <td className="num">{item.accessoryUnitPrice ? formatCount(item.accessoryUnitPrice) : ""}</td>
-                <td className="num">{formatCount(item.pretax)}</td>
-                <td>{item.note}</td>
-              </tr>
-            ))}
+            {(() => {
+              let stt = 0;
+              return version.items.map((item) => {
+                if (item.calcMethod === "nhom") {
+                  return (
+                    <tr key={item.id} className="sum">
+                      <td />
+                      <td />
+                      <td colSpan={5} className="whitespace-pre-line font-semibold">
+                        {item.name}
+                      </td>
+                      <td className="num">{khoiLuongIn(item)}</td>
+                      <td />
+                      <td className="num">{formatCount(item.pretax)}</td>
+                    </tr>
+                  );
+                }
+                stt += 1;
+                return (
+                  <tr key={item.id}>
+                    <td className="num">{stt}</td>
+                    <td>{item.positionCode}</td>
+                    <td className="whitespace-pre-line">{item.name}</td>
+                    <td>{item.unit}</td>
+                    <td className="num">{blank(item.widthMm)}</td>
+                    <td className="num">{blank(item.heightMm)}</td>
+                    <td className="num">{item.quantity ? formatCount(item.quantity) : ""}</td>
+                    <td className="num">{khoiLuongIn(item)}</td>
+                    <td className="num">{item.mainUnitPrice ? formatCount(item.mainUnitPrice) : ""}</td>
+                    <td className="num">{formatCount(item.pretax)}</td>
+                  </tr>
+                );
+              });
+            })()}
             {version.totals.retail ? (
               <tr className="sum">
                 <td />
-                <td colSpan={7}>TỔNG CỘNG</td>
+                <td colSpan={8}>TỔNG CỘNG (TRƯỚC THUẾ)</td>
                 <td className="num">{formatCount(version.totals.pretax)}</td>
-                <td />
               </tr>
             ) : (
               <>
                 <tr className="sum">
                   <td />
-                  <td colSpan={7}>Cộng tiền hàng (trước thuế)</td>
+                  <td colSpan={8}>Cộng tiền hàng (trước thuế)</td>
                   <td className="num">{formatCount(version.totals.pretax)}</td>
-                  <td />
                 </tr>
                 <tr className="sum">
                   <td />
-                  <td colSpan={7}>Thuế giá trị gia tăng ({version.totals.taxBps / 100}%)</td>
+                  <td colSpan={8}>Thuế giá trị gia tăng ({version.totals.taxBps / 100}%)</td>
                   <td className="num">{formatCount(version.totals.tax)}</td>
-                  <td />
                 </tr>
                 <tr className="sum">
                   <td />
-                  <td colSpan={7}>TỔNG CỘNG (đã gồm thuế)</td>
+                  <td colSpan={8}>TỔNG CỘNG (đã gồm thuế)</td>
                   <td className="num">{formatCount(version.totals.posttax)}</td>
-                  <td />
                 </tr>
               </>
             )}
           </tbody>
         </table>
-        <p className="mt-3 text-sm italic">{words}</p>
-        <h2 className="mt-4 text-sm font-semibold">Điều kiện báo giá:</h2>
-        <ul className="mt-1 space-y-1 text-sm">
-          {clauses.map((line) => (
-            <li key={line}>- {line}</li>
-          ))}
-        </ul>
+        <p className="mt-3 text-right text-sm italic">{words}</p>
+        {ghiChu ? (
+          <>
+            <h2 className="mt-4 text-sm font-semibold">Ghi chú:</h2>
+            <p className="mt-1 whitespace-pre-line text-sm">{ghiChu}</p>
+          </>
+        ) : null}
         <div className="mt-10 grid grid-cols-2 text-center text-sm">
           <div>
             <p className="font-semibold">XÁC NHẬN CỦA KHÁCH HÀNG</p>
+            {khachDaiDien ? <p className="mt-16 font-semibold">{khachDaiDien}</p> : <p className="mt-16">&nbsp;</p>}
+            {khachChucVu ? <p className="text-xs text-muted">{khachChucVu}</p> : null}
           </div>
           <div>
             <p className="font-semibold">ĐẠI DIỆN CÔNG TY</p>
-            <p className="mt-16 font-semibold">{version.representativeName}</p>
-            <p className="mt-2 text-xs">Người lập báo giá: {author}</p>
+            {ctyDaiDien ? <p className="mt-16 font-semibold">{ctyDaiDien}</p> : <p className="mt-16">&nbsp;</p>}
+            {ctyChucVu ? <p className="text-xs text-muted">{ctyChucVu}</p> : null}
           </div>
         </div>
       </article>

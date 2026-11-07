@@ -305,6 +305,35 @@ export async function readCompanyLogo(user: User) {
   return { bytes, contentType: loaiNoiDung(kind), fileName: row.logoName || "logo" };
 }
 
+/** Logo công ty dạng data URL cho trang in — không cần quyền cài đặt. */
+export async function companyLogoDataUrl() {
+  const row = await prisma.companyProfile.findUnique({
+    where: { id: HO_SO },
+    select: { logoStore: true, logoKey: true },
+  });
+  if (!row?.logoKey) return null;
+  try {
+    const bytes = await docTep(row.logoStore === "s3" ? "s3" : "may_chu", row.logoKey);
+    const kind = row.logoKey.endsWith(".png") ? "png" : row.logoKey.endsWith(".webp") ? "webp" : "jpg";
+    return `data:${loaiNoiDung(kind)};base64,${Buffer.from(bytes).toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Đại diện công ty cho bản in — không cần quyền cài đặt. */
+export async function companyParty() {
+  const row = await prisma.companyProfile.findUnique({
+    where: { id: HO_SO },
+    select: { name: true, representativeName: true, representativeTitle: true },
+  });
+  return {
+    name: row?.name ?? "",
+    representativeName: row?.representativeName ?? "",
+    representativeTitle: row?.representativeTitle ?? "",
+  };
+}
+
 export async function deleteCompanyLogo(user: User) {
   batBuoc(user);
   const row = await prisma.companyProfile.findUnique({ where: { id: HO_SO }, select: { logoStore: true, logoKey: true } });

@@ -7,7 +7,7 @@ import { requireUser } from "@/shared/auth/session";
 import { routes } from "@/shared/config/routes";
 import { rethrowPage } from "@/shared/page";
 import { CategoryBoard } from "@/modules/settings/category-board";
-import { listQuoteCategories } from "@/modules/settings/categories";
+import { listQuoteCategoryBundle } from "@/modules/settings/categories";
 
 export const metadata: Metadata = { title: "Hạng mục báo giá" };
 
@@ -22,9 +22,9 @@ export default function Page() {
 async function Content() {
   const user = await requireUser();
   if (!hasCapability(user, "settings.manage")) forbidden();
-  let categories: Awaited<ReturnType<typeof listQuoteCategories>> = [];
+  let catalog: Awaited<ReturnType<typeof listQuoteCategoryBundle>> = { groups: [], categories: [] };
   try {
-    categories = await listQuoteCategories();
+    catalog = await listQuoteCategoryBundle();
   } catch (error) {
     rethrowPage(error);
   }
@@ -36,10 +36,10 @@ async function Content() {
         </Link>
         <h1 className="mt-1 text-2xl font-semibold text-ink">Hạng mục báo giá</h1>
         <p className="mt-1 text-sm text-muted">
-          Mỗi hạng mục mang theo đơn vị tính. Kéo tay nắm ở đầu dòng để đổi thứ tự. Đổi tên hoặc đơn vị xong thì bấm ra ngoài ô để lưu.
+          Trái: cây nhóm cha–con (thêm, đổi tên, xóa, kéo thứ tự). Phải: hạng mục trong nhóm đang chọn kèm đơn vị và đơn giá tham chiếu.
         </p>
       </div>
-      <CategoryBoard initial={categories} />
+      <CategoryBoard initial={catalog} />
     </div>
   );
 }

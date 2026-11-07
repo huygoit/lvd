@@ -4,6 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { callApi } from "@/shared/client/api";
+import { nhanVatPercent, vatPercents } from "@/shared/catalog/vat";
 import { buttonPrimary, Field, inputClass } from "@/shared/components/controls";
 
 type Customer = { id: string; code: string; name: string };
@@ -23,9 +24,23 @@ export function QuoteCreateForm({
   const router = useRouter();
   const [customer, setCustomer] = useState(customerId);
   const [project, setProject] = useState(projectId);
+  const [projectName, setProjectName] = useState("");
+  const [hangMuc, setHangMuc] = useState(() => projects.find((item) => item.id === projectId)?.name ?? "");
+  const [taxPercent, setTaxPercent] = useState("10");
+  const [validityDays, setValidityDays] = useState("15");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const related = useMemo(() => projects.filter((item) => item.customerId === customer), [projects, customer]);
+
+  function chonCongTrinh(id: string) {
+    setProject(id);
+    if (!id) {
+      setHangMuc(projectName.trim());
+      return;
+    }
+    const picked = related.find((item) => item.id === id) ?? projects.find((item) => item.id === id);
+    if (picked) setHangMuc(picked.name);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +55,9 @@ export function QuoteCreateForm({
           projectId: project,
           projectName: String(form.get("projectName") ?? ""),
           location: String(form.get("location") ?? ""),
-          title: String(form.get("title") ?? ""),
+          title: hangMuc.trim(),
+          taxPercent: taxPercent === "chua" ? -1 : Number(taxPercent),
+          validityDays: Number(validityDays || 0),
         }),
       });
       router.push(`/bao-gia?mo=sua&id=${created.id}`);
@@ -71,6 +88,8 @@ export function QuoteCreateForm({
           onChange={(event) => {
             setCustomer(event.target.value);
             setProject("");
+            setHangMuc("");
+            setProjectName("");
           }}
         >
           <option value="">Chọn khách</option>
@@ -82,7 +101,7 @@ export function QuoteCreateForm({
         </select>
       </Field>
       <Field label="Công trình có sẵn">
-        <select className={inputClass} value={project} onChange={(event) => setProject(event.target.value)}>
+        <select className={inputClass} value={project} onChange={(event) => chonCongTrinh(event.target.value)}>
           <option value="">Tạo công trình mới bên dưới</option>
           {related.map((item) => (
             <option key={item.id} value={item.id}>
@@ -94,18 +113,56 @@ export function QuoteCreateForm({
       {project ? null : (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Tên công trình mới">
-            <input name="projectName" className={inputClass} placeholder="Biệt thự Thảo Điền" required={!project} />
+            <input
+              name="projectName"
+              className={inputClass}
+              placeholder="Biệt thự Thảo Điền"
+              required={!project}
+              value={projectName}
+              onChange={(event) => {
+                const next = event.target.value;
+                setProjectName(next);
+                setHangMuc(next);
+              }}
+            />
           </Field>
           <Field label="Địa điểm">
             <input name="location" className={inputClass} />
           </Field>
         </div>
       )}
-      <Field label="Tiêu đề báo giá" hint="Bỏ trống sẽ lấy theo tên công trình.">
-        <input name="title" className={inputClass} />
+      <Field label="Hạng mục">
+        <input
+          className={inputClass}
+          value={hangMuc}
+          required
+          placeholder="Sửa chữa tài sản công năm 2025…"
+          onChange={(event) => setHangMuc(event.target.value)}
+        />
       </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Thuế VAT">
+          <select className={inputClass} value={taxPercent} onChange={(event) => setTaxPercent(event.target.value)}>
+            <option value="chua">Báo giá chưa bao gồm VAT</option>
+            {vatPercents.map((muc) => (
+              <option key={muc} value={muc}>
+                {nhanVatPercent(muc)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Hiệu lực (ngày)" hint="Số ngày kể từ ngày tạo báo giá (ngày hôm nay).">
+          <input
+            className={inputClass}
+            inputMode="numeric"
+            value={validityDays}
+            placeholder="15"
+            onChange={(event) => setValidityDays(event.target.value.replace(/\D/g, "").slice(0, 4))}
+          />
+        </Field>
+      </div>
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      <button className={buttonPrimary} disabled={busy || !customer}>
+      <button className={buttonPrimary} disabled={busy || !customer || !hangMuc.trim()}>
         Tạo báo giá
       </button>
     </form>

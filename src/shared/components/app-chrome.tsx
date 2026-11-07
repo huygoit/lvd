@@ -18,6 +18,7 @@ import {
   DatabaseBackup,
   Ellipsis,
   Factory,
+  FileSpreadsheet,
   FileText,
   FolderOpen,
   Hammer,
@@ -90,6 +91,7 @@ const navIcons: Record<string, LucideIcon> = {
   building: Building,
   "database-backup": DatabaseBackup,
   "list-tree": ListTree,
+  "file-spreadsheet": FileSpreadsheet,
   "user-round": UserRound,
   network: Network,
   "id-card": IdCard,
@@ -539,9 +541,15 @@ function NoticeMenu({ attention }: { attention: Attention }) {
           {notices.length ? (
             <div className="mb-2">
               <p className="px-2 pt-1 text-sm font-semibold text-ink">Thông báo</p>
-              <p className="px-2 pb-1 text-xs text-muted">Giao nhận vật tư</p>
+              <p className="px-2 pb-1 text-xs text-muted">Gần đây</p>
               {notices.map((item) => {
-                const Icon = item.kind === "nhan" ? PackageCheck : Truck;
+                const Icon = item.kind === "nhan" ? PackageCheck : item.kind === "bao_gia" ? FileText : Truck;
+                const iconTone =
+                  item.kind === "nhan"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : item.kind === "bao_gia"
+                      ? "bg-amber-50 text-amber-800"
+                      : "bg-primary/10 text-primary";
                 return (
                   <Link
                     key={item.id}
@@ -553,7 +561,7 @@ function NoticeMenu({ attention }: { attention: Attention }) {
                       setOpen(false);
                     }}
                   >
-                    <span className={cn("mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl", item.kind === "nhan" ? "bg-emerald-50 text-emerald-700" : "bg-primary/10 text-primary")}>
+                    <span className={cn("mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl", iconTone)}>
                       <Icon className="size-4" />
                     </span>
                     <span className="min-w-0 flex-1">

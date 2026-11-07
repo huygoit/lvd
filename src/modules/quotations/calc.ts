@@ -3,18 +3,23 @@ import { AppError } from "@/shared/errors";
 export type CalcMethod = "bo" | "dien_tich";
 
 export type ItemInput = {
-  groupKey: string;
+  groupKey?: string;
   name: string;
   unit?: string;
   widthMm?: number | null;
   heightMm?: number | null;
   quantity: number;
   mainUnitPrice: number;
-  accessoryUnitPrice: number;
+  /** Giữ tương thích bản cũ — luôn 0 trên form mới. */
+  accessoryUnitPrice?: number;
+  /** Khối lượng m² nhập tay; có giá trị thì không dùng rộng/cao. */
+  areaOverride?: number | null;
 };
 
 export type PricedItem = {
   calcMethod: CalcMethod;
+  /** Khối lượng m² ×1000 dùng để tính tiền. */
+  areaMilli: number;
   mainAmount: number;
   accessoryAmount: number;
   pretax: number;
@@ -77,41 +82,98 @@ function edge(value: number | null | undefined, label: string) {
   return positiveInt(value, label);
 }
 
+/** Khối lượng m² ×1000 = rộng × cao × số lượng / 1_000_000 × 1000. */
+export function areaFromSizeMilli(widthMm: number, heightMm: number, quantity: number) {
+  if (widthMm <= 0 || heightMm <= 0 || quantity <= 0) return 0;
+  return Math.round((widthMm * heightMm * quantity) / 1_000);
+}
+
+/** Đổi m² → milli (×1000). */
+export function areaToMilli(areaM2: number) {
+  if (!Number.isFinite(areaM2) || areaM2 < 0) fail("Khối lượng không hợp lệ.");
+  const milli = Math.round(areaM2 * 1000);
+  if (milli > 1_000_000_000) fail("Khối lượng quá lớn.");
+  return milli;
+}
+
+export function formatAreaMilli(milli: number) {
+  if (!milli) return "";
+  const text = (milli / 1000).toFixed(3).replace(/\.?0+$/, "");
+  return text;
+}
+
 export function priceItem(input: ItemInput): PricedItem {
-  if (!input.groupKey.trim()) fail("Chọn hạng mục.");
-  if (!input.name.trim()) fail("Dòng hạng mục cần có tên.");
-  const quantity = positiveInt(input.quantity, "Số lượng");
-  const price = nonNegativeInt(input.mainUnitPrice, "Đơn giá cửa");
-  const accessory = nonNegativeInt(input.accessoryUnitPrice, "Đơn giá phụ kiện");
+  // Nội dung bắt buộc lúc lưu; lúc gõ vẫn cho tính thành tiền để ô nhảy số ngay.
+  const price = nonNegativeInt(input.mainUnitPrice, "Đơn giá");
+  const accessory = nonNegativeInt(input.accessoryUnitPrice ?? 0, "Đơn giá phụ kiện");
   const width = edge(input.widthMm, "Chiều rộng");
   const height = edge(input.heightMm, "Chiều cao");
-  const byArea = width !== null && height !== null;
-  // Có đủ rộng và cao thì nhân m². Thiếu một cạnh thì đơn giá cửa tính theo bộ. Phụ kiện luôn theo bộ.
-  const pretax = byArea
-    ? divRoundHalfUp(
-        (BigInt(width) * BigInt(height) * BigInt(price) + BigInt(accessory) * 1_000_000n) * BigInt(quantity),
-        1_000_000n,
-      )
-    : (BigInt(price) + BigInt(accessory)) * BigInt(quantity);
+  const override =
+    input.areaOverride === null || input.areaOverride === undefined
+      ? null
+      : areaToMilli(input.areaOverride);
+
+  // Nhập khối lượng tay: thành tiền = khối lượng × đơn giá (không cần số lượng).
+  if (override !== null && override > 0) {
+    const main = divRoundHalfUp(BigInt(override) * BigInt(price), 1000n);
+    return {
+      calcMethod: "dien_tich",
+      areaMilli: override,
+      mainAmount: asMoney(main),
+      accessoryAmount: 0,
+      pretax: asMoney(main),
+    };
+  }
+
+  const quantity = positiveInt(input.quantity, "Số lượng");
+  let areaMilli = 0;
+  let calcMethod: CalcMethod = "bo";
+  if (width !== null && height !== null) {
+    areaMilli = areaFromSizeMilli(width, height, quantity);
+    calcMethod = "dien_tich";
+  }
+
   const accessoryAmount = BigInt(accessory) * BigInt(quantity);
+  const main =
+    calcMethod === "dien_tich"
+      ? divRoundHalfUp(BigInt(areaMilli) * BigInt(price), 1000n)
+      : BigInt(price) * BigInt(quantity);
+  const pretax = main + accessoryAmount;
   return {
-    calcMethod: byArea ? "dien_tich" : "bo",
-    mainAmount: asMoney(pretax - accessoryAmount),
+    calcMethod,
+    areaMilli,
+    mainAmount: asMoney(main),
     accessoryAmount: asMoney(accessoryAmount),
     pretax: asMoney(pretax),
   };
 }
 
+/** taxBps < 0 = báo giá chưa bao gồm VAT (không in dòng thuế). 0 = thuế 0%. */
 export function applyTax(pretax: number, taxBps: number): QuoteTotals {
   const goods = nonNegativeInt(pretax, "Tiền hàng");
-  const rate = whole(taxBps, "Thuế suất");
-  if (rate < 0 || rate > 10_000) fail("Thuế suất phải từ 0 đến 100.");
-  const tax = divRoundHalfUp(BigInt(goods) * BigInt(rate), 10_000n);
+  if (!Number.isInteger(taxBps)) fail("Thuế suất phải là số nguyên.");
+  if (taxBps < 0) {
+    return { pretax: goods, tax: 0, posttax: goods, taxBps: 0, retail: true };
+  }
+  if (taxBps > 10_000) fail("Thuế suất phải từ 0 đến 100.");
+  const tax = divRoundHalfUp(BigInt(goods) * BigInt(taxBps), 10_000n);
   return {
     pretax: goods,
     tax: asMoney(tax),
     posttax: asMoney(BigInt(goods) + tax),
-    taxBps: rate,
-    retail: rate === 0,
+    taxBps,
+    retail: false,
   };
+}
+
+/** Chuỗi select thuế: "chua" | "0" | "5" | "8" | "10". */
+export function taxSelectValue(taxBps: number) {
+  if (taxBps < 0) return "chua";
+  return String(taxBps / 100);
+}
+
+/** Đổi giá trị select → phần vạn. "chua" = -1. */
+export function taxSelectToBps(value: string) {
+  if (value === "chua") return -1;
+  return taxRateBps(Number(value || 0));
 }

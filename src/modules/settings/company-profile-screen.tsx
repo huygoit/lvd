@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { BadgeCheck, Building2, FileText, Mail, MapPin, Phone, Plus, Save, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Building2, FileText, Mail, MapPin, Phone, Plus, Save, Trash2, Upload } from "lucide-react";
 import { callApi } from "@/shared/client/api";
 import { ActionBadge } from "@/shared/components/action-badge";
 import { Button } from "@/shared/components/ui/button";
@@ -201,11 +201,7 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
   const diaLienLac = hoSo.contactAddress || hoSo.address;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href={routes.settings} className="text-sm font-medium text-primary">← Cài đặt</Link>
-        <Button type="button" disabled={dangLuu} onClick={() => void luu()}><Save className="size-4" aria-hidden /> {dangLuu ? "Đang lưu" : "Lưu hồ sơ"}</Button>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-4 pb-24">
       {loi ? <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{loi}</p> : null}
       {bao ? <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success" role="status">{bao}</p> : null}
 
@@ -360,6 +356,20 @@ export function CompanyProfileScreen({ initial }: { initial: HoSoCongTy }) {
       ))}
 
       <p className="text-xs text-muted">Bản đồ lấy từ iframe Google Maps. Bấm Lưu hồ sơ để ghi đường nhúng.</p>
+
+      {/* Chân trang cố định: quay lại cài đặt + lưu hồ sơ. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+          <Button type="button" variant="outline" asChild>
+            <Link href={routes.settings}>
+              <ArrowLeft className="size-4" aria-hidden /> Quay lại cài đặt
+            </Link>
+          </Button>
+          <Button type="button" disabled={dangLuu} onClick={() => void luu()}>
+            <Save className="size-4" aria-hidden /> {dangLuu ? "Đang lưu" : "Lưu hồ sơ"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

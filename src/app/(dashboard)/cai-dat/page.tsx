@@ -58,7 +58,13 @@ async function Content() {
               <TableCell>
                 <Link href={routes.quoteCategories} className="font-semibold text-primary">Hạng mục báo giá</Link>
               </TableCell>
-              <TableCell className="whitespace-normal text-muted">Thêm, đổi tên, kéo thả thứ tự hoặc ngừng dùng nội dung mẫu trên báo giá.</TableCell>
+              <TableCell className="whitespace-normal text-muted">Cây nhóm cha–con và hạng mục: đơn vị, đơn giá tham chiếu, thứ tự, trạng thái.</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell>
+                <Link href={routes.quoteTemplate} className="font-semibold text-primary">Mẫu báo giá (Excel)</Link>
+              </TableCell>
+              <TableCell className="whitespace-normal text-muted">File mẫu Excel, biến đơn / bảng dong[], chọn mẫu đang dùng và xem trước cách đổ.</TableCell>
             </TableRow>
             <TableRow>
               <TableCell>

@@ -10,7 +10,7 @@ import { writeAudit } from "@/modules/system/audit";
 import { assertAny } from "@/modules/system/access";
 import { nextCode } from "@/modules/system/codes";
 import { applyTax, priceItem, taxRateBps, type ItemInput } from "@/modules/quotations/calc";
-import { assertQuoteCategories } from "@/modules/settings/categories";
+import { derivedCommercialTexts, withChuaVatNote } from "@/modules/quotations/document";
 import { canonMeasureUnit } from "@/shared/catalog/units";
 
 export type LineInput = ItemInput & {
@@ -19,25 +19,19 @@ export type LineInput = ItemInput & {
   positionCode?: string;
   spec?: string;
   note?: string;
+  areaOverrideMilli?: number | null;
+  /** "nhom" = dòng nhóm hạng mục (chỉ tên; tiền/KL lưu tổng các dòng con). */
+  calcMethod?: string;
 };
 
+/** Bộ trường lưu nháp — hạng mục (title) cố định từ lúc tạo; người/ngày báo giá không sửa tay. */
 export type DraftInput = {
   revision: number;
-  title: string;
-  quoteDate: string;
-  validUntil: string;
-  ownerId: string;
-  receiverName: string;
-  receiverTitle: string;
-  receiverPhone: string;
-  receiverEmail: string;
-  scheduleText: string;
-  paymentTerms: string;
-  deliveryTerms: string;
-  warrantyTerms: string;
-  includedScope: string;
-  excludedScope: string;
-  note: string;
+  /** Số ngày hiệu lực kể từ ngày báo giá; server tự ra validUntil. */
+  validityDays: number;
+  constructionTime: string;
+  internalNote: string;
+  quoteNote: string;
   taxPercent: number;
   warrantyMonths: number;
   advanceAmount: number;
@@ -76,9 +70,25 @@ async function assertQuote(user: User, id: string) {
 }
 
 function snapshot(
-  customer: { name: string; taxCode: string; address: string; phone: string; email: string },
+  customer: {
+    name: string;
+    taxCode: string;
+    address: string;
+    phone: string;
+    email: string;
+    representativeName: string;
+    representativeTitle: string;
+  },
   project: { name: string; location: string },
-  profile: { name: string; taxCode: string; address: string; phone: string; email: string; representativeName: string },
+  profile: {
+    name: string;
+    taxCode: string;
+    address: string;
+    phone: string;
+    email: string;
+    representativeName: string;
+    representativeTitle: string;
+  },
 ) {
   return {
     customerName: customer.name,
@@ -86,6 +96,8 @@ function snapshot(
     customerAddress: customer.address,
     customerPhone: customer.phone,
     customerEmail: customer.email,
+    customerRepresentativeName: customer.representativeName,
+    customerRepresentativeTitle: customer.representativeTitle,
     projectName: project.name,
     projectLocation: project.location,
     companyName: profile.name,
@@ -94,6 +106,7 @@ function snapshot(
     companyPhone: profile.phone,
     companyEmail: profile.email,
     representativeName: profile.representativeName,
+    representativeTitle: profile.representativeTitle,
   };
 }
 
@@ -148,7 +161,10 @@ export async function listQuotations(user: User, filters: { q?: string; internal
     internalStatus: row.current.internalStatus,
     customerStatus: row.current.customerStatus,
     ownerId: row.current.ownerId,
-    posttax: applyTax(row.current.items.reduce((sum, item) => sum + item.pretax, 0), row.current.taxBps).posttax,
+    posttax: applyTax(
+      row.current.items.filter((item) => item.calcMethod !== "nhom").reduce((sum, item) => sum + item.pretax, 0),
+      row.current.taxBps,
+    ).posttax,
     updatedAt: row.current.updatedAt.toISOString(),
   }));
 }
@@ -171,21 +187,35 @@ export async function getQuotation(user: User, id: string) {
     },
   });
   const files = await prisma.attachment.findMany({ where: { entityType: "phien_ban", entityId: { in: row.versions.map((version) => version.id) } } });
-  const staff = await prisma.staff.findMany();
+  const authorIds = [...new Set(row.versions.map((version) => version.authorId))];
+  const authors = await prisma.staff.findMany({ where: { id: { in: authorIds } }, select: { id: true, name: true } });
+  const authorName = new Map(authors.map((item) => [item.id, item.name]));
   return {
     id: row.id,
     code: row.code,
     customerId: row.customerId,
     projectId: row.projectId,
-    customer: { id: row.customer.id, name: row.customer.name, code: row.customer.code, phone: row.customer.phone, email: row.customer.email, address: row.customer.address },
+    customer: {
+      id: row.customer.id,
+      name: row.customer.name,
+      code: row.customer.code,
+      phone: row.customer.phone,
+      email: row.customer.email,
+      address: row.customer.address,
+      representativeName: row.customer.representativeName,
+      representativeTitle: row.customer.representativeTitle,
+    },
     project: { id: row.project.id, name: row.project.name, code: row.project.code, location: row.project.location },
-    staff: staff.map((item) => ({ id: item.id, name: item.name })),
     versions: row.versions.map((version) => {
       const items = version.items.map(presentItem);
       return {
         ...version,
+        authorName: authorName.get(version.authorId) ?? "",
         items,
-        totals: applyTax(items.reduce((sum, item) => sum + item.pretax, 0), version.taxBps),
+        totals: applyTax(
+          items.filter((item) => item.calcMethod !== "nhom").reduce((sum, item) => sum + item.pretax, 0),
+          version.taxBps,
+        ),
         createdAt: version.createdAt.toISOString(),
         updatedAt: version.updatedAt.toISOString(),
         approvals: version.approvals.map((event) => ({ ...event, createdAt: event.createdAt.toISOString() })),
@@ -219,9 +249,21 @@ export async function deleteQuotation(user: User, id: string) {
   }
 }
 
-export async function createQuotation(user: User, input: { customerId: string; projectId?: string; projectName?: string; location?: string; title?: string }, now = new Date()) {
+export async function createQuotation(
+  user: User,
+  input: {
+    customerId: string;
+    projectId?: string;
+    projectName?: string;
+    location?: string;
+    title?: string;
+    taxPercent?: number;
+    validityDays?: number;
+  },
+  now = new Date(),
+) {
   assertAny(user, ["quotations.create"]);
-  const customer = await prisma.customer.findUnique({ where: { id: input.customerId }, include: { contacts: { where: { isPrimary: true }, take: 1 } } });
+  const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
   if (!customer || customer.status !== "dang_dung") throw new AppError("Chọn khách hàng đang sử dụng.", 400);
   if (!hasCapability(user, "customers.view") && customer.ownerId !== user.id && !hasCapability(user, "quotations.view")) {
     assertAny(user, ["quotations.view", "quotations.view.assigned"]);
@@ -229,7 +271,12 @@ export async function createQuotation(user: User, input: { customerId: string; p
   }
   const profile = await company();
   const today = todayYmd(now);
-  const contact = customer.contacts[0];
+  // taxPercent < 0 (hoặc -1) = chưa bao gồm VAT.
+  const taxBps =
+    input.taxPercent !== undefined && input.taxPercent < 0
+      ? -1
+      : taxRateBps(input.taxPercent ?? profile.defaultTaxBps / 100);
+  const validityDays = countField(Number(input.validityDays ?? 15), "Số ngày hiệu lực");
   return prisma.$transaction(async (tx) => {
     let projectId = input.projectId;
     if (!projectId) {
@@ -250,6 +297,8 @@ export async function createQuotation(user: User, input: { customerId: string; p
     }
     const project = await tx.project.findUnique({ where: { id: projectId } });
     if (!project || project.customerId !== customer.id) throw new AppError("Công trình không thuộc khách hàng này.", 400);
+    const hangMuc = text(input.title) || project.name;
+    if (!hangMuc) throw new AppError("Nhập hạng mục báo giá.", 400);
     const quotation = await tx.quotation.create({
       data: { code: await nextCode(tx, "BG", now), customerId: customer.id, projectId: project.id },
     });
@@ -257,17 +306,16 @@ export async function createQuotation(user: User, input: { customerId: string; p
       data: {
         quotationId: quotation.id,
         number: 1,
-        title: text(input.title) || `Báo giá ${project.name}`,
+        // Hạng mục báo giá — dùng cho câu dẫn bản in.
+        title: hangMuc,
         quoteDate: today,
-        validUntil: addDays(today, 15),
+        validUntil: validityDays > 0 ? addDays(today, validityDays) : today,
         authorId: user.id,
         ownerId: user.id,
-        receiverName: contact?.name ?? "",
-        receiverTitle: contact?.role ?? "",
-        receiverPhone: contact?.phone || customer.phone,
-        receiverEmail: contact?.email || customer.email,
-        taxBps: profile.defaultTaxBps,
+        taxBps,
         ...snapshot(customer, project, profile),
+        // Chọn chưa VAT thì tự có dòng ghi chú tương ứng.
+        quoteNote: withChuaVatNote("", taxBps < 0),
       },
     });
     await writeAudit(tx, user.id, "tao", "bao_gia", quotation.id, `Tạo ${quotation.code} phiên bản 1`);
@@ -276,88 +324,159 @@ export async function createQuotation(user: User, input: { customerId: string; p
 }
 
 function pricedLines(items: LineInput[]) {
-  return items.map((item, index) => {
-    const priced = priceItem(item);
+  const rows = items.map((item, index) => {
+    if (item.calcMethod === "nhom") {
+      if (!item.name.trim()) throw new AppError("Nhóm hạng mục cần có tên.", 400);
+      return {
+        sortOrder: index,
+        sourceItemId: item.sourceItemId || null,
+        groupKey: "hang_muc",
+        positionCode: "",
+        name: item.name.trim(),
+        spec: "",
+        unit: "bộ",
+        calcMethod: "nhom",
+        widthMm: null as number | null,
+        heightMm: null as number | null,
+        lengthMm: null as number | null,
+        quantity: 0,
+        areaOverrideMilli: null as number | null,
+        mainUnitPrice: 0,
+        accessorySeparate: false,
+        accessoryUnitPrice: 0,
+        discountMode: "khong",
+        discountBps: 0,
+        discountAmount: 0,
+        taxMode: "khong_ap_dung",
+        taxBps: 0,
+        mainAmount: 0,
+        accessoryAmount: 0,
+        discountValue: 0,
+        pretax: 0,
+        taxAmount: null as number | null,
+        posttax: 0,
+        note: "",
+      };
+    }
+    // Có khối lượng nhập tay thì bỏ rộng/cao khi lưu — đúng quy ước form.
+    const override = item.areaOverride != null && item.areaOverride > 0 ? item.areaOverride : null;
+    const priced = priceItem({
+      ...item,
+      accessoryUnitPrice: 0,
+      widthMm: override !== null ? null : item.widthMm,
+      heightMm: override !== null ? null : item.heightMm,
+      areaOverride: override,
+    });
     return {
       sortOrder: index,
       sourceItemId: item.sourceItemId || null,
-      groupKey: item.groupKey,
+      groupKey: text(item.groupKey) || "hang_muc",
       positionCode: text(item.positionCode),
       name: item.name.trim(),
       spec: text(item.spec),
       unit: (() => {
-        const unit = canonMeasureUnit(text(item.unit) || "bộ");
+        const unit = canonMeasureUnit(text(item.unit) || "m2");
         if (!unit) throw new AppError("Đơn vị tính không có trong danh mục.", 400);
         return unit;
       })(),
       calcMethod: priced.calcMethod,
-      widthMm: item.widthMm || null,
-      heightMm: item.heightMm || null,
-      lengthMm: null,
-      quantity: item.quantity,
+      widthMm: override !== null ? null : item.widthMm || null,
+      heightMm: override !== null ? null : item.heightMm || null,
+      lengthMm: null as number | null,
+      quantity: override !== null ? 0 : item.quantity,
+      areaOverrideMilli: override !== null ? priced.areaMilli : null,
       mainUnitPrice: item.mainUnitPrice,
-      accessorySeparate: true,
-      accessoryUnitPrice: item.accessoryUnitPrice,
+      accessorySeparate: false,
+      accessoryUnitPrice: 0,
       discountMode: "khong",
       discountBps: 0,
       discountAmount: 0,
       taxMode: "khong_ap_dung",
       taxBps: 0,
       mainAmount: priced.mainAmount,
-      accessoryAmount: priced.accessoryAmount,
+      accessoryAmount: 0,
       discountValue: 0,
       pretax: priced.pretax,
-      taxAmount: null,
+      taxAmount: null as number | null,
       posttax: priced.pretax,
       note: text(item.note),
     };
   });
+
+  // Cộng khối lượng + thành tiền vào từng nhóm từ các dòng item liền sau đến nhóm kế.
+  for (let i = 0; i < rows.length; i += 1) {
+    if (rows[i].calcMethod !== "nhom") continue;
+    let pretax = 0;
+    let areaMilli = 0;
+    for (let j = i + 1; j < rows.length; j += 1) {
+      if (rows[j].calcMethod === "nhom") break;
+      pretax += rows[j].pretax;
+      areaMilli += rows[j].areaOverrideMilli ?? 0;
+      if (!rows[j].areaOverrideMilli && rows[j].widthMm && rows[j].heightMm && rows[j].quantity) {
+        areaMilli += Math.round((rows[j].widthMm! * rows[j].heightMm! * rows[j].quantity) / 1_000);
+      }
+    }
+    rows[i].pretax = pretax;
+    rows[i].posttax = pretax;
+    rows[i].mainAmount = pretax;
+    rows[i].areaOverrideMilli = areaMilli > 0 ? areaMilli : null;
+  }
+  return rows;
 }
 
 export async function saveDraft(user: User, quotationId: string, versionId: string, input: DraftInput) {
   assertAny(user, ["quotations.update", "quotations.create"]);
   await assertQuote(user, quotationId);
-  if (!isYmd(input.quoteDate) || !isYmd(input.validUntil) || input.validUntil < input.quoteDate) {
-    throw new AppError("Ngày hiệu lực phải từ ngày báo giá trở đi.", 400);
-  }
   const kept = input.items.filter((item) => item.name.trim());
-  await assertQuoteCategories(kept.map((item) => item.groupKey));
+  if (
+    input.items.some(
+      (item) =>
+        item.calcMethod !== "nhom" &&
+        !item.name.trim() &&
+        (item.mainUnitPrice > 0 || (item.areaOverride ?? 0) > 0 || !!item.widthMm || !!item.heightMm),
+    )
+  ) {
+    throw new AppError("Mỗi dòng có số liệu cần nhập nội dung hạng mục.", 400);
+  }
   const lines = pricedLines(kept);
-  const taxBps = taxRateBps(input.taxPercent);
+  const taxBps = input.taxPercent < 0 ? -1 : taxRateBps(input.taxPercent);
+  const validityDays = countField(input.validityDays, "Số ngày hiệu lực");
   const warrantyMonths = countField(input.warrantyMonths, "Số tháng bảo hành");
   const advanceAmount = countField(input.advanceAmount, "Tiền tạm ứng");
-  const advanceDays = countField(input.advanceDays, "Số ngày tạm ứng");
-  const paymentDays = countField(input.paymentDays, "Số ngày thanh toán");
+  // Không thu tạm ứng thì không giữ số ngày tạm ứng.
+  const advanceDays = advanceAmount > 0 ? countField(input.advanceDays, "Số ngày tạm ứng") : 0;
+  const paymentDays = countField(input.paymentDays, "Số ngày thanh toán sau nghiệm thu");
+  const constructionTime = text(input.constructionTime);
+  const commercial = derivedCommercialTexts({
+    constructionTime,
+    warrantyMonths,
+    advanceAmount,
+    advanceDays,
+    paymentDays,
+  });
   const version = await prisma.$transaction(async (tx) => {
     const current = await tx.quotationVersion.findFirst({ where: { id: versionId, quotationId } });
     if (!current) throw new AppError("Không tìm thấy phiên bản.", 404);
     if (!editable.has(current.internalStatus)) throw new AppError("Phiên bản này đã khóa, không sửa trực tiếp.", 400);
     if (current.revision !== input.revision) throw new AppError("Phiên bản vừa được người khác cập nhật. Hãy tải lại.", 409);
-    const staff = await tx.staff.findFirst({ where: { id: input.ownerId, active: true } });
-    if (!staff) throw new AppError("Người phụ trách không còn hoạt động.", 400);
+    if (!isYmd(current.quoteDate)) throw new AppError("Ngày báo giá không hợp lệ.", 500);
+    // Hiệu lực luôn tính từ ngày báo giá trên server — tránh lệch ngày từ máy client.
+    const validUntil = validityDays > 0 ? addDays(current.quoteDate, validityDays) : current.quoteDate;
     const saved = await tx.quotationVersion.updateMany({
       where: { id: versionId, revision: input.revision },
       data: {
-        title: text(input.title),
-        quoteDate: input.quoteDate,
-        validUntil: input.validUntil,
-        ownerId: input.ownerId,
-        receiverName: text(input.receiverName),
-        receiverTitle: text(input.receiverTitle),
-        receiverPhone: text(input.receiverPhone),
-        receiverEmail: text(input.receiverEmail),
-        scheduleText: text(input.scheduleText),
-        paymentTerms: text(input.paymentTerms),
-        deliveryTerms: text(input.deliveryTerms),
-        warrantyTerms: text(input.warrantyTerms),
+        validUntil,
+        constructionTime,
+        paymentTerms: commercial.paymentTerms,
+        deliveryTerms: commercial.deliveryTerms,
+        warrantyTerms: commercial.warrantyTerms,
         taxBps,
         warrantyMonths,
         advanceAmount,
         advanceDays,
         paymentDays,
-        includedScope: text(input.includedScope),
-        excludedScope: text(input.excludedScope),
-        note: text(input.note),
+        internalNote: text(input.internalNote),
+        quoteNote: withChuaVatNote(input.quoteNote, taxBps < 0),
         revision: { increment: 1 },
       },
     });
@@ -396,6 +515,22 @@ async function move(user: User, quotationId: string, versionId: string, revision
   });
 }
 
+/** Tài khoản đang hoạt động có quyền duyệt báo giá (kể cả người gửi — Admin thường vừa lập vừa duyệt hệ thống). */
+async function approverIds(tx: Prisma.TransactionClient) {
+  const rows = await tx.loginAccount.findMany({
+    where: { active: true, staff: { active: true } },
+    select: {
+      id: true,
+      staff: { select: { roleLinks: { select: { role: { select: { active: true, capabilities: true } } } } } },
+    },
+  });
+  return rows
+    .filter((row) =>
+      row.staff.roleLinks.some((link) => link.role.active && link.role.capabilities.includes("quotations.approve")),
+    )
+    .map((row) => row.id);
+}
+
 export async function submitVersion(user: User, quotationId: string, versionId: string, revision: number) {
   assertAny(user, ["quotations.submit", "quotations.create"]);
   const quote = await assertQuote(user, quotationId);
@@ -412,6 +547,19 @@ export async function submitVersion(user: User, quotationId: string, versionId: 
     await tx.quotationApproval.create({ data: { versionId, action: "gui_duyet", actorId: user.id, reason: "" } });
     await tx.project.update({ where: { id: quote.projectId }, data: { stage: "dang_bao_gia" } });
     await writeAudit(tx, user.id, "gui_duyet", "bao_gia", quotationId, "Gửi duyệt");
+    // Thông báo chuông cho người có quyền Duyệt — click mở trang xem PDF.
+    const ids = await approverIds(tx);
+    if (ids.length) {
+      await tx.notice.createMany({
+        data: ids.map((userId) => ({
+          userId,
+          title: "Có báo giá cần duyệt",
+          body: `${quote.code} · ${quote.customer.name}\n${quote.project.name}`,
+          href: `/in/bao-gia/${quotationId}?v=${versionId}`,
+          kind: "bao_gia",
+        })),
+      });
+    }
   });
 }
 
@@ -426,7 +574,7 @@ export async function approveVersion(user: User, quotationId: string, versionId:
   await assertQuote(user, quotationId);
   const version = await prisma.quotationVersion.findFirst({ where: { id: versionId, quotationId } });
   if (!version) throw new AppError("Không tìm thấy phiên bản.", 404);
-  if (version.authorId === user.id) throw new AppError("Người lập không tự duyệt phiên bản của mình.", 400);
+  // Cho phép người lập tự duyệt nếu có quyền — công ty nhỏ thường Admin vừa lập vừa duyệt.
   await move(user, quotationId, versionId, revision, ["cho_duyet"], "da_duyet", "duyet", "Đã duyệt nội bộ");
   await prisma.attachment.updateMany({ where: { entityType: "phien_ban", entityId: versionId }, data: { locked: true } });
 }
@@ -440,10 +588,13 @@ export async function requestChange(user: User, quotationId: string, versionId: 
 
 export async function createNextVersion(user: User, quotationId: string, versionId: string, reason: string, now = new Date()) {
   assertAny(user, ["quotations.version", "quotations.create"]);
-  await assertQuote(user, quotationId);
+  const quote = await assertQuote(user, quotationId);
   if (reason.trim().length < 3) throw new AppError("Cần ghi lý do điều chỉnh.", 400);
   const source = await prisma.quotationVersion.findFirst({ where: { id: versionId, quotationId }, include: { items: { orderBy: { sortOrder: "asc" } } } });
   if (!source) throw new AppError("Không tìm thấy phiên bản nguồn.", 404);
+  // Phiên bản mới lấy lại đại diện/chức vụ từ khách và hồ sơ công ty, không copy snapshot trống.
+  const profile = await company();
+  const party = snapshot(quote.customer, quote.project, profile);
   return prisma.$transaction(async (tx) => {
     const max = await tx.quotationVersion.aggregate({ where: { quotationId }, _max: { number: true } });
     const created = await tx.quotationVersion.create({
@@ -457,30 +608,15 @@ export async function createNextVersion(user: User, quotationId: string, version
         validUntil: source.validUntil < todayYmd(now) ? addDays(todayYmd(now), 15) : source.validUntil,
         authorId: user.id,
         ownerId: user.id,
-        receiverName: source.receiverName,
-        receiverTitle: source.receiverTitle,
-        receiverPhone: source.receiverPhone,
-        receiverEmail: source.receiverEmail,
-        scheduleText: source.scheduleText,
+        constructionTime: source.constructionTime,
         paymentTerms: source.paymentTerms,
         deliveryTerms: source.deliveryTerms,
         warrantyTerms: source.warrantyTerms,
         includedScope: source.includedScope,
         excludedScope: source.excludedScope,
-        note: source.note,
-        customerName: source.customerName,
-        customerTaxCode: source.customerTaxCode,
-        customerAddress: source.customerAddress,
-        customerPhone: source.customerPhone,
-        customerEmail: source.customerEmail,
-        projectName: source.projectName,
-        projectLocation: source.projectLocation,
-        companyName: source.companyName,
-        companyTaxCode: source.companyTaxCode,
-        companyAddress: source.companyAddress,
-        companyPhone: source.companyPhone,
-        companyEmail: source.companyEmail,
-        representativeName: source.representativeName,
+        internalNote: source.internalNote,
+        quoteNote: source.quoteNote,
+        ...party,
         taxBps: source.taxBps,
         warrantyMonths: source.warrantyMonths,
         advanceAmount: source.advanceAmount,
@@ -506,6 +642,7 @@ export async function createNextVersion(user: User, quotationId: string, version
           heightMm: item.heightMm,
           lengthMm: item.lengthMm,
           quantity: item.quantity,
+          areaOverrideMilli: item.areaOverrideMilli,
           mainUnitPrice: item.mainUnitPrice,
           accessorySeparate: item.accessorySeparate,
           accessoryUnitPrice: item.accessoryUnitPrice,
@@ -553,17 +690,14 @@ export async function copyQuotation(user: User, quotationId: string, versionId: 
         validUntil: addDays(todayYmd(now), 15),
         authorId: user.id,
         ownerId: user.id,
-        receiverName: source.receiverName,
-        receiverTitle: source.receiverTitle,
-        receiverPhone: source.receiverPhone,
-        receiverEmail: source.receiverEmail,
-        scheduleText: source.scheduleText,
+        constructionTime: source.constructionTime,
         paymentTerms: source.paymentTerms,
         deliveryTerms: source.deliveryTerms,
         warrantyTerms: source.warrantyTerms,
         includedScope: source.includedScope,
         excludedScope: source.excludedScope,
-        note: source.note,
+        internalNote: source.internalNote,
+        quoteNote: source.quoteNote,
         taxBps: source.taxBps,
         warrantyMonths: source.warrantyMonths,
         advanceAmount: source.advanceAmount,
@@ -587,6 +721,7 @@ export async function copyQuotation(user: User, quotationId: string, versionId: 
           heightMm: item.heightMm,
           lengthMm: item.lengthMm,
           quantity: item.quantity,
+          areaOverrideMilli: item.areaOverrideMilli,
           mainUnitPrice: item.mainUnitPrice,
           accessorySeparate: item.accessorySeparate,
           accessoryUnitPrice: item.accessoryUnitPrice,
@@ -645,13 +780,22 @@ export async function compareVersions(user: User, quotationId: string, leftId: s
   const removed = left.items.filter((item) => !matched.has(item.id)).map((item) => item.name);
   const terms = [
     ["Thuế suất", left.taxBps, right.taxBps],
-    ["Thời gian thi công", left.scheduleText, right.scheduleText],
-    ["Bảo hành", left.warrantyMonths, right.warrantyMonths],
+    ["Thời gian thi công", left.constructionTime, right.constructionTime],
+    ["Bảo hành (tháng)", left.warrantyMonths, right.warrantyMonths],
     ["Tạm ứng", left.advanceAmount, right.advanceAmount],
-    ["Ngày thanh toán", left.paymentDays, right.paymentDays],
+    ["Tạm ứng (ngày làm việc)", left.advanceDays, right.advanceDays],
+    ["Thanh toán sau nghiệm thu (ngày)", left.paymentDays, right.paymentDays],
+    ["Ghi chú nội bộ", left.internalNote, right.internalNote],
+    ["Ghi chú", left.quoteNote, right.quoteNote],
   ].filter(([, before, after]) => before !== after).map(([label]) => String(label));
-  const leftTotal = applyTax(left.items.reduce((sum, item) => sum + item.pretax, 0), left.taxBps).posttax;
-  const rightTotal = applyTax(right.items.reduce((sum, item) => sum + item.pretax, 0), right.taxBps).posttax;
+  const leftTotal = applyTax(
+    left.items.filter((item) => item.calcMethod !== "nhom").reduce((sum, item) => sum + item.pretax, 0),
+    left.taxBps,
+  ).posttax;
+  const rightTotal = applyTax(
+    right.items.filter((item) => item.calcMethod !== "nhom").reduce((sum, item) => sum + item.pretax, 0),
+    right.taxBps,
+  ).posttax;
   return { added, removed, changed, terms, leftTotal, rightTotal, delta: rightTotal - leftTotal };
 }
 
