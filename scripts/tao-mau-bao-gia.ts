@@ -35,7 +35,7 @@ async function main() {
 
   let tongRow = 0;
   let ghiChuRow = 0;
-  keep.eachRow((row, number) => {
+  keep.eachRow((row: ExcelJS.Row, number: number) => {
     if (number < 11) return;
     const a = String(row.getCell(1).value ?? "");
     const c = String(row.getCell(3).value ?? "");
