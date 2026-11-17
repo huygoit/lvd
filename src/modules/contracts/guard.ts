@@ -2,7 +2,7 @@ import type { User } from "@/shared/auth/types";
 import { hasCapability } from "@/shared/auth/types";
 import { AppError } from "@/shared/errors";
 
-const adminKeys = ["adminUnitPrice", "declaredAdminTotal"];
+const adminKeys = ["adminUnitPrice"];
 
 export function seesAdminPrice(user: User) {
   return hasCapability(user, "contracts.prices.admin");

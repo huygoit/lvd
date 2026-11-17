@@ -106,6 +106,11 @@ async function Body({
     isAuthor ||
     hasCapability(user, "quotations.approve") ||
     hasAnyCapability(user, ["quotations.deliver", "quotations.create"]);
+  const allowCreateContract =
+    !version.contractId &&
+    (isAuthor ||
+      hasCapability(user, "quotations.respond") ||
+      hasAnyCapability(user, ["quotations.create", "contracts.create"]));
   const recipientName =
     pickText(version.customerRepresentativeName, detail.customer.representativeName) || detail.customer.name;
   return (
@@ -139,8 +144,10 @@ async function Body({
         customerPhone={version.customerPhone}
         recipientName={recipientName}
         internalStatus={version.internalStatus}
+        customerStatus={version.customerStatus}
         allowApprove={allowApprove}
         allowSend={allowSend}
+        allowCreateContract={allowCreateContract}
       />
       <article className="sheet">
         {draft ? <div className="watermark" aria-hidden="true">BẢN NHÁP</div> : null}

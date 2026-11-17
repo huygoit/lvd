@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, Check, Download, Mail, MessageCircle } from "lucide-react";
+import { ArrowLeft, Check, Download, FileSignature, Mail, MessageCircle } from "lucide-react";
 import { callApi } from "@/shared/client/api";
 
 type Props = {
@@ -17,10 +17,13 @@ type Props = {
   customerPhone: string;
   recipientName: string;
   internalStatus: string;
-  /** Có quyền duyệt và không phải người lập. */
+  customerStatus: string;
+  /** Có quyền duyệt. */
   allowApprove: boolean;
   /** Người lập hoặc người có quyền gửi/duyệt — thấy nút gửi sau khi đã duyệt. */
   allowSend: boolean;
+  /** Báo giá đã duyệt, chưa có HĐ — hiện Lập hợp đồng. */
+  allowCreateContract: boolean;
 };
 
 /** Tách SĐT VN: dạng 0… (zalo.me) và 84… (deep link PC). */
@@ -80,8 +83,10 @@ export function PrintFooter({
   customerPhone,
   recipientName,
   internalStatus,
+  customerStatus,
   allowApprove,
   allowSend,
+  allowCreateContract,
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -91,6 +96,7 @@ export function PrintFooter({
 
   const showApprove = status === "cho_duyet" && allowApprove;
   const showSend = status === "da_duyet" && allowSend;
+  const showCreate = status === "da_duyet" && allowCreateContract && customerStatus !== "tu_choi";
 
   async function approve() {
     setBusy(true);
@@ -146,6 +152,23 @@ export function PrintFooter({
     void ghiDaGui("email");
   }
 
+  async function lapHopDong() {
+    if (!window.confirm("Lập hợp đồng từ báo giá này? Hạng mục sẽ chuyển sang công trình.")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await callApi(`/api/bao-gia/${quotationId}/hanh-dong`, {
+        method: "POST",
+        body: JSON.stringify({ action: "lap-hop-dong", versionId, revision: rev, kind: "thi_cong" }),
+      });
+      router.push("/hop-dong");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không lập được hợp đồng.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-[210mm] flex-col gap-2 px-4 py-3 sm:px-8">
@@ -185,6 +208,16 @@ export function PrintFooter({
                   <Mail className="size-4" aria-hidden /> Gửi email khách hàng
                 </button>
               </>
+            ) : null}
+            {showCreate ? (
+              <button
+                type="button"
+                disabled={busy}
+                className="inline-flex h-10 items-center gap-2 rounded-[12px] bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-60"
+                onClick={() => void lapHopDong()}
+              >
+                <FileSignature className="size-4" aria-hidden /> Lập hợp đồng
+              </button>
             ) : null}
             <button
               type="button"

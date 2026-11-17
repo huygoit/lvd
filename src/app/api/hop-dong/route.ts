@@ -17,9 +17,9 @@ export async function POST(request: Request) {
     const contract = await createContract(user, {
       projectId: String(body.projectId ?? ""),
       customerId: typeof body.customerId === "string" ? body.customerId : undefined,
-      kind: String(body.kind ?? ""),
+      kind: typeof body.kind === "string" ? body.kind : undefined,
       name: typeof body.name === "string" ? body.name : undefined,
-      priceBasis: typeof body.priceBasis === "string" ? body.priceBasis : undefined,
+      signedOn: typeof body.signedOn === "string" ? body.signedOn : undefined,
       quotationVersionId: typeof body.quotationVersionId === "string" ? body.quotationVersionId : undefined,
     });
     return { id: contract.id, code: contract.code };

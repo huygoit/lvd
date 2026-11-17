@@ -717,39 +717,34 @@ model Position {
   staff     Staff[]
 }
 
+// Hợp đồng rút gọn tạm thời: số HĐ, tên, công trình, khách, báo giá, ngày ký.
 model Contract {
-  id                  String   @id @default(cuid())
-  code                String   @unique
-  signedNumber        String   @default("")
-  kind                String
-  name                String
-  projectId           String
-  project             Project  @relation(fields: [projectId], references: [id])
-  customerId          String
-  customer            Customer @relation(fields: [customerId], references: [id])
-  quotationVersionId  String?  @unique
-  quotationVersion    QuotationVersion? @relation(fields: [quotationVersionId], references: [id])
-  internalStatus      String   @default("nhap")
-  signStatus          String   @default("chua_ky")
-  effectStatus        String   @default("chua_hieu_luc")
-  executionStatus     String   @default("chua_trien_khai")
-  priceBasis          String   @default("chua_xac_nhan")
-  signedOn            String?
-  effectiveOn         String?
-  ownerId             String
-  declaredSignedTotal Int?
-  declaredAdminTotal  Int?
-  scopeText           String   @default("")
-  paymentText         String   @default("")
-  warrantyText        String   @default("")
-  note                String   @default("")
-  revision            Int      @default(1)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  lines               ContractLine[]
-  milestones          ContractMilestone[]
-  payments            ContractPayment[]
-  changes             ContractChange[]
+  id                 String             @id @default(cuid())
+  /// Số hợp đồng tự tăng (HD-…).
+  code               String             @unique
+  name               String
+  projectId          String
+  project            Project            @relation(fields: [projectId], references: [id])
+  customerId         String
+  customer           Customer           @relation(fields: [customerId], references: [id])
+  quotationVersionId String?            @unique
+  quotationVersion   QuotationVersion?  @relation(fields: [quotationVersionId], references: [id])
+  /// Ngày ký (YYYY-MM-DD).
+  signedOn           String?
+  /// Giữ mặc định hệ thống — chưa mở UI loại HĐ / duyệt phức tạp.
+  kind               String             @default("thi_cong")
+  internalStatus     String             @default("nhap")
+  signStatus         String             @default("chua_ky")
+  effectStatus       String             @default("chua_hieu_luc")
+  executionStatus    String             @default("chua_trien_khai")
+  ownerId            String
+  revision           Int                @default(1)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  lines              ContractLine[]
+  milestones         ContractMilestone[]
+  payments           ContractPayment[]
+  changes            ContractChange[]
 
   @@index([projectId])
   @@index([customerId])

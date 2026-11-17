@@ -70,6 +70,8 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
             quoteId={detail.id}
             code={detail.code}
             customerName={detail.customer.name}
+            customerPhone={version.customerPhone || detail.customer.phone}
+            customerEmail={version.customerEmail || detail.customer.email}
             projectName={detail.project.name}
             today={todayYmd(new Date())}
             customers={customers}
@@ -83,6 +85,12 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
               requestChange: version.internalStatus === "cho_duyet" && hasAnyCapability(user, ["quotations.request_change", "quotations.approve"]),
               deliver: version.internalStatus === "da_duyet" && hasAnyCapability(user, ["quotations.deliver", "quotations.create"]),
               respond: version.internalStatus === "da_duyet" && version.deliveries.length > 0 && hasAnyCapability(user, ["quotations.respond", "quotations.create"]),
+              createContract:
+                version.internalStatus === "da_duyet" &&
+                !version.contractId &&
+                version.customerStatus !== "tu_choi" &&
+                (version.authorId === user.id ||
+                  hasAnyCapability(user, ["quotations.respond", "quotations.create", "contracts.create"])),
               version: hasAnyCapability(user, ["quotations.version", "quotations.create"]),
               copy: hasAnyCapability(user, ["quotations.copy", "quotations.create"]),
               exception: hasCapability(user, "quotations.approve"),

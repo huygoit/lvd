@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { callApi, formDataOf } from "@/shared/client/api";
-import { buttonGhost, buttonPrimary, Field, inputClass } from "@/shared/components/controls";
+import { buttonGhost, buttonPrimary, emailValidationProps, Field, inputClass } from "@/shared/components/controls";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { customerTypeLabel } from "@/modules/customers/labels";
@@ -161,7 +161,7 @@ export function CustomerForm({
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Email liên lạc">
-          <input name="email" type="email" defaultValue={initial.email} className={inputClass} />
+          <input name="email" defaultValue={initial.email} className={inputClass} {...emailValidationProps("Email liên lạc")} />
         </Field>
         <SoDienThoai name="altPhone" label="Số điện thoại liên lạc" value={initial.altPhone} />
       </div>
@@ -207,7 +207,12 @@ export function CustomerForm({
       </section>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Email nhận hóa đơn">
-          <input name="invoiceEmail" type="email" defaultValue={initial.invoiceEmail} className={inputClass} />
+          <input
+            name="invoiceEmail"
+            defaultValue={initial.invoiceEmail}
+            className={inputClass}
+            {...emailValidationProps("Email nhận hóa đơn")}
+          />
         </Field>
         <Field label="Ghi chú">
           <textarea name="note" defaultValue={initial.note} rows={1} className={cn(inputClass, "min-h-9 resize-none py-1.5")} />

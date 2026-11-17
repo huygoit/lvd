@@ -1,6 +1,7 @@
 import { AppError } from "@/shared/errors";
 import { actor, readJson, run } from "@/shared/http";
 import {
+  acceptAndCreateContract,
   approveVersion,
   copyQuotation,
   createNextVersion,
@@ -65,6 +66,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         thayThe: Boolean(body.thayThe),
       });
       return { ok: true };
+    }
+    if (action === "khach-dong-y" || action === "lap-hop-dong") {
+      const contract = await acceptAndCreateContract(user, id, versionId, String(body.kind ?? "thi_cong"));
+      return { id: contract.id, contractId: contract.id };
     }
     throw new AppError("Thao tác không hợp lệ.", 400);
   });

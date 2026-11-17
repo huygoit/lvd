@@ -35,7 +35,7 @@ export const customerFollowLabel = {
   chua_gui: "Chưa gửi",
   da_gui: "Đã gửi",
   dang_thuong_luong: "Đang thương lượng",
-  chap_thuan: "Khách chấp thuận",
-  tu_choi: "Khách từ chối",
+  chap_thuan: "Khách đồng ý",
+  tu_choi: "Từ chối",
   da_thay_the: "Đã thay bằng phiên bản khác",
 } as const;

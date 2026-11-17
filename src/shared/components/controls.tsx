@@ -1,3 +1,4 @@
+import type { FormEvent } from "react";
 import { buttonVariants } from "@/shared/components/ui/button";
 import { cn, focusRing } from "@/shared/lib/cn";
 
@@ -23,6 +24,22 @@ export function Field({ label, children, hint }: { label: string; children: Reac
       {hint ? <span className="mt-1 block text-xs text-muted">{hint}</span> : null}
     </label>
   );
+}
+
+/** Props cho input type=email — đổi bubble validate trình duyệt sang tiếng Việt. */
+export function emailValidationProps(label = "Email") {
+  return {
+    type: "email" as const,
+    onInvalid: (event: FormEvent<HTMLInputElement>) => {
+      const input = event.currentTarget;
+      if (input.validity.valueMissing) input.setCustomValidity(`Nhập ${label.toLowerCase()}.`);
+      else if (input.validity.typeMismatch) input.setCustomValidity(`${label} không đúng định dạng.`);
+      else input.setCustomValidity("");
+    },
+    onInput: (event: FormEvent<HTMLInputElement>) => {
+      event.currentTarget.setCustomValidity("");
+    },
+  };
 }
 
 export { focusRing };

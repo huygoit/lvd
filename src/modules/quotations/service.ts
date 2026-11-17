@@ -182,7 +182,13 @@ export async function getQuotation(user: User, id: string) {
       project: true,
       versions: {
         orderBy: { number: "desc" },
-        include: { items: { orderBy: { sortOrder: "asc" } }, approvals: { orderBy: { createdAt: "asc" } }, deliveries: { orderBy: { sentAt: "asc" } }, responses: { orderBy: { createdAt: "asc" } } },
+        include: {
+          items: { orderBy: { sortOrder: "asc" } },
+          approvals: { orderBy: { createdAt: "asc" } },
+          deliveries: { orderBy: { sentAt: "asc" } },
+          responses: { orderBy: { createdAt: "asc" } },
+          contract: { select: { id: true, code: true } },
+        },
       },
     },
   });
@@ -208,8 +214,11 @@ export async function getQuotation(user: User, id: string) {
     project: { id: row.project.id, name: row.project.name, code: row.project.code, location: row.project.location },
     versions: row.versions.map((version) => {
       const items = version.items.map(presentItem);
+      const { contract, ...rest } = version;
       return {
-        ...version,
+        ...rest,
+        contractId: contract?.id ?? null,
+        contractCode: contract?.code ?? null,
         authorName: authorName.get(version.authorId) ?? "",
         items,
         totals: applyTax(
@@ -797,6 +806,33 @@ export async function compareVersions(user: User, quotationId: string, leftId: s
     right.taxBps,
   ).posttax;
   return { added, removed, changed, terms, leftTotal, rightTotal, delta: rightTotal - leftTotal };
+}
+
+/** Lập hợp đồng từ báo giá đã duyệt — tạo HĐ + đổ hạng mục sang công trình. */
+export async function acceptAndCreateContract(
+  user: User,
+  quotationId: string,
+  versionId: string,
+  kind = "thi_cong",
+  now = new Date(),
+) {
+  assertAny(user, ["quotations.create", "quotations.respond", "contracts.create"]);
+  await assertQuote(user, quotationId);
+  const version = await prisma.quotationVersion.findFirst({
+    where: { id: versionId, quotationId },
+    include: { contract: { select: { id: true } } },
+  });
+  if (!version) throw new AppError("Không tìm thấy phiên bản.", 404);
+  if (version.internalStatus !== "da_duyet") throw new AppError("Chỉ lập hợp đồng khi báo giá đã duyệt.", 400);
+  const duocPhep =
+    version.authorId === user.id ||
+    hasCapability(user, "quotations.respond") ||
+    hasCapability(user, "contracts.create");
+  if (!duocPhep) throw new AppError("Bạn không có quyền lập hợp đồng từ báo giá này.", 403);
+  if (version.contract) return prisma.contract.findUniqueOrThrow({ where: { id: version.contract.id } });
+
+  const { createFromQuotation } = await import("@/modules/contracts/service");
+  return createFromQuotation(user, versionId, { kind }, now);
 }
 
 export async function recordDelivery(user: User, quotationId: string, versionId: string, input: { recipientName: string; channel: string; note?: string }) {

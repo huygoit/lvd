@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Plus, Save, Trash2, X } from "lucide-react";
+import { Copy, FileSignature, Mail, MessageCircle, Plus, Save, Trash2, X } from "lucide-react";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as SuKienChuot } from "react";
 import Link from "next/link";
@@ -125,10 +125,31 @@ type Flags = {
   requestChange: boolean;
   deliver: boolean;
   respond: boolean;
+  /** Đã duyệt, chưa có HĐ — hiện nút Lập hợp đồng. */
+  createContract: boolean;
   version: boolean;
   copy: boolean;
   exception: boolean;
 };
+
+function zaloPhones(raw: string) {
+  let digits = raw.replace(/\D/g, "");
+  if (!digits) return { local: "", intl: "" };
+  if (digits.startsWith("84") && digits.length >= 11) return { local: `0${digits.slice(2)}`, intl: digits };
+  if (digits.startsWith("0")) return { local: digits, intl: `84${digits.slice(1)}` };
+  if (digits.length === 9) return { local: `0${digits}`, intl: `84${digits}` };
+  return { local: digits, intl: digits };
+}
+
+function clickHref(href: string) {
+  const link = document.createElement("a");
+  link.href = href;
+  link.rel = "noopener noreferrer";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
 
 function blankLine(unit = "m2"): Line {
   return {
@@ -251,6 +272,8 @@ export function QuoteEditor({
   quoteId,
   code,
   customerName,
+  customerPhone = "",
+  customerEmail = "",
   projectName,
   version,
   versions,
@@ -263,6 +286,8 @@ export function QuoteEditor({
   quoteId: string;
   code: string;
   customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
   projectName: string;
   version: EditorVersion;
   versions: { id: string; number: number }[];
@@ -559,7 +584,7 @@ export function QuoteEditor({
     setError("");
     try {
       const nextRevision = saveFirst ? await persist(revision) : revision;
-      const result = await callApi<{ id?: string; versionId?: string }>(`/api/bao-gia/${quoteId}/hanh-dong`, {
+      const result = await callApi<{ id?: string; versionId?: string; contractId?: string }>(`/api/bao-gia/${quoteId}/hanh-dong`, {
         method: "POST",
         body: JSON.stringify({ action, versionId: version.id, revision: nextRevision, ...extra }),
       });
@@ -570,6 +595,13 @@ export function QuoteEditor({
       }
       if (action === "phien-ban-moi" && result.versionId) {
         router.push(`/bao-gia?mo=sua&id=${quoteId}&v=${result.versionId}`);
+        return;
+      }
+      // Lập HĐ → về danh sách hợp đồng (hạng mục đã đổ sang công trình).
+      if (action === "khach-dong-y" || action === "lap-hop-dong") {
+        flashNotice("Đã lập hợp đồng từ báo giá");
+        router.push("/hop-dong");
+        return;
       }
       flashNotice("Lưu thành công");
       router.refresh();
@@ -578,6 +610,23 @@ export function QuoteEditor({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function guiZaloNhanh() {
+    const { local, intl } = zaloPhones(customerPhone);
+    if (intl) {
+      clickHref(`zalo://conversation?phone=${intl}`);
+      window.setTimeout(() => clickHref(`https://zalo.me/${local}`), 900);
+    } else {
+      clickHref("zalo://");
+    }
+    await act("gui-khach", { recipientName: customerName || "Khách hàng", channel: "zalo" });
+  }
+
+  async function guiEmailNhanh() {
+    const subject = encodeURIComponent(`Báo giá ${code} — ${customerName}`);
+    clickHref(customerEmail.trim() ? `mailto:${customerEmail.trim()}?subject=${subject}` : `mailto:?subject=${subject}`);
+    await act("gui-khach", { recipientName: customerName || "Khách hàng", channel: "email" });
   }
 
   async function saveOnly() {
@@ -635,14 +684,27 @@ export function QuoteEditor({
           Rút về nháp
         </button>
       ) : null}
-      {flags.deliver && version.customerStatus === "chua_gui" ? (
-        <button type="button" className={buttonPrimary} disabled={busy} onClick={() => setPanel("gui")}>
-          Ghi đã gửi khách
-        </button>
+      {flags.deliver ? (
+        <>
+          <button type="button" className={buttonGhost} disabled={busy} onClick={() => void guiZaloNhanh()}>
+            <MessageCircle className="size-4" aria-hidden /> Gửi Zalo
+          </button>
+          <button type="button" className={buttonGhost} disabled={busy} onClick={() => void guiEmailNhanh()}>
+            <Mail className="size-4" aria-hidden /> Gửi email
+          </button>
+        </>
       ) : null}
-      {flags.respond && version.customerStatus !== "chap_thuan" ? (
-        <button type="button" className={buttonPrimary} disabled={busy} onClick={() => setPanel("phan-hoi")}>
-          Ghi phản hồi
+      {flags.createContract ? (
+        <button
+          type="button"
+          className={buttonPrimary}
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm("Lập hợp đồng từ báo giá này? Hạng mục sẽ chuyển sang công trình.")) return;
+            void act("lap-hop-dong", { kind: "thi_cong" });
+          }}
+        >
+          <FileSignature className="size-4" aria-hidden /> Lập hợp đồng
         </button>
       ) : null}
       <Link

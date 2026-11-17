@@ -53,7 +53,7 @@ const internalLabel: Record<InternalStatus, string> = {
 const customerLabel: Record<CustomerStatus, string> = {
   chua_phan_hoi: "Khách chưa phản hồi",
   dang_thuong_luong: "Đang thương lượng",
-  da_chap_thuan: "Khách đã chấp thuận",
+  da_chap_thuan: "Khách đồng ý",
   tu_choi: "Khách từ chối",
   het_hieu_luc: "Hết hiệu lực",
 };

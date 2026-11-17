@@ -6,9 +6,10 @@ import { writeAudit } from "@/modules/system/audit";
 import { assertAny, assertOwn, listOwner } from "@/modules/system/access";
 import { nextCode } from "@/modules/system/codes";
 import { rejectAdminPayload, seesAdminPrice } from "@/modules/contracts/guard";
-import { contractKindLabel, priceBasisLabel, scopeKindLabel } from "@/modules/contracts/labels";
-import { controlWarning, linePretax, placementError, sumLeaves, type ScopeLine } from "@/modules/contracts/money";
+import { contractKindLabel, scopeKindLabel } from "@/modules/contracts/labels";
+import { linePretax, placementError, sumLeaves, type ScopeLine } from "@/modules/contracts/money";
 import { currentQuantity, fabricationOver } from "@/modules/contracts/quantity";
+import { isYmd, todayYmd } from "@/shared/lib/dates";
 
 const include = {
   project: { select: { id: true, code: true, name: true, ownerId: true } },
@@ -67,9 +68,6 @@ function toScope(row: ContractRow): ScopeLine[] {
 
 export function presentContract(user: User, row: ContractRow) {
   const admin = seesAdminPrice(user);
-  const scope = toScope(row);
-  const lineSumSigned = sumLeaves(scope, "signedUnitPrice");
-  const lineSumAdmin = admin ? sumLeaves(scope, "adminUnitPrice") : null;
   const effectiveDeltas = new Map<string, Array<number | null>>();
   for (const change of row.changes) {
     if (change.status !== "hieu_luc" || !change.lineId) continue;
@@ -80,38 +78,30 @@ export function presentContract(user: User, row: ContractRow) {
   return {
     id: row.id,
     code: row.code,
-    signedNumber: row.signedNumber,
-    kind: row.kind,
     name: row.name,
+    kind: row.kind,
     project: row.project,
     customer: row.customer,
     quotation: row.quotationVersion
-      ? { id: row.quotationVersion.quotation.id, code: row.quotationVersion.quotation.code, versionId: row.quotationVersion.id, number: row.quotationVersion.number }
+      ? {
+          id: row.quotationVersion.quotation.id,
+          code: row.quotationVersion.quotation.code,
+          versionId: row.quotationVersion.id,
+          number: row.quotationVersion.number,
+        }
       : null,
+    signedOn: row.signedOn,
     internalStatus: row.internalStatus,
     signStatus: row.signStatus,
     effectStatus: row.effectStatus,
     executionStatus: row.executionStatus,
-    priceBasis: row.priceBasis,
-    signedOn: row.signedOn,
-    effectiveOn: row.effectiveOn,
     ownerId: row.ownerId,
     revision: row.revision,
-    scopeText: row.scopeText,
-    paymentText: row.paymentText,
-    warrantyText: row.warrantyText,
-    note: row.note,
-    declaredSignedTotal: row.declaredSignedTotal,
-    declaredAdminTotal: admin ? row.declaredAdminTotal : null,
     canSeeAdmin: admin,
-    lineSumSigned,
-    lineSumAdmin,
-    signedWarning: controlWarning(row.declaredSignedTotal, lineSumSigned),
-    adminWarning: admin ? controlWarning(row.declaredAdminTotal, lineSumAdmin) : null,
-    priceNote: row.priceBasis === "tron_goi" ? "Hợp đồng trọn gói không lấy khối lượng nhân đơn giá làm giá trị quyết toán." : row.priceBasis === "chua_xac_nhan" ? "Chưa xác nhận cơ sở giá. Chưa tính công nợ, lợi nhuận hay thuế." : null,
+    // Giữ cấu trúc cũ cho API phụ (phạm vi / mốc) — UI chính không dùng.
     lines: row.lines.map((line) => mapLine(line, admin, effectiveDeltas)),
     milestones: row.milestones,
-    payments: row.payments.map((item) => ({ ...item, collected: null as null, source: "Kế hoạch thu. Chưa có khoản phải thu từ phân hệ tài chính." })),
+    payments: row.payments.map((item) => ({ ...item, collected: null as null, source: "Kế hoạch thu." })),
     changes: row.changes.map((item) => ({
       id: item.id,
       lineId: item.lineId,
@@ -120,12 +110,6 @@ export function presentContract(user: User, row: ContractRow) {
       deltaQuantity: item.deltaQuantity,
       status: item.status,
     })),
-    quantitySources: {
-      fabrication: "Chưa có dữ liệu từ phân hệ gia công",
-      received: "Chưa có dữ liệu từ phân hệ gia công",
-      installed: "Chưa có dữ liệu từ phân hệ thi công",
-      accepted: "Chưa có dữ liệu nghiệm thu khách hàng",
-    },
   };
 }
 
@@ -166,10 +150,9 @@ export async function listContracts(user: User, filters: { q?: string; projectId
             OR: [
               { code: { contains: q } },
               { name: { contains: q } },
-              { signedNumber: { contains: q } },
               { customer: { name: { contains: q } } },
               { project: { name: { contains: q } } },
-              { lines: { some: { OR: [{ name: { contains: q } }, { code: { contains: q } }] } } },
+              { quotationVersion: { quotation: { code: { contains: q } } } },
             ],
           }
         : {}),
@@ -185,25 +168,20 @@ export async function getContract(user: User, id: string) {
   return presentContract(user, await load(user, id));
 }
 
-async function assertSignedNumber(projectId: string, signedNumber: string, ignoreId?: string) {
-  const number = signedNumber.trim();
-  if (!number) return;
-  const existing = await prisma.contract.findFirst({
-    where: { projectId, signedNumber: number, ...(ignoreId ? { id: { not: ignoreId } } : {}) },
-    select: { id: true },
-  });
-  if (existing) throw new AppError("Số hợp đồng ký đã có trên công trình này.", 400);
-}
-
 export async function createContract(
   user: User,
-  input: { projectId: string; customerId?: string; kind: string; name?: string; priceBasis?: string; quotationVersionId?: string },
+  input: { projectId: string; customerId?: string; kind?: string; name?: string; signedOn?: string; quotationVersionId?: string },
   now = new Date(),
 ) {
   assertAny(user, ["contracts.create"]);
-  if (input.quotationVersionId) return createFromQuotation(user, input.quotationVersionId, input.kind, now);
-  if (!(input.kind in contractKindLabel)) throw new AppError("Chọn một trong ba loại hợp đồng.", 400);
-  const basis = input.priceBasis && input.priceBasis in priceBasisLabel ? input.priceBasis : "chua_xac_nhan";
+  if (input.quotationVersionId) {
+    return createFromQuotation(user, input.quotationVersionId, {
+      kind: input.kind,
+      name: input.name,
+      signedOn: input.signedOn,
+    }, now);
+  }
+  const kind = input.kind && input.kind in contractKindLabel ? input.kind : "thi_cong";
   const project = await prisma.project.findUnique({ where: { id: input.projectId } });
   if (!project) throw new AppError("Không tìm thấy công trình.", 404);
   assertOwn(user, "projects.view", "projects.view.assigned", project.ownerId);
@@ -211,16 +189,18 @@ export async function createContract(
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
   if (!customer || customer.status !== "dang_dung") throw new AppError("Đối tác không còn dùng được.", 400);
   const name = (input.name ?? "").trim() || `Hợp đồng ${project.name}`;
+  const signedOn = String(input.signedOn ?? "").trim();
+  if (signedOn && !isYmd(signedOn)) throw new AppError("Ngày ký không hợp lệ.", 400);
   return prisma.$transaction(async (tx) => {
     const code = await nextCode(tx, "HD", now);
     const contract = await tx.contract.create({
       data: {
         code,
-        kind: input.kind,
+        kind,
         name,
         projectId: project.id,
         customerId: customer.id,
-        priceBasis: basis,
+        signedOn: signedOn || null,
         ownerId: user.id,
       },
     });
@@ -229,53 +209,102 @@ export async function createContract(
   });
 }
 
-export async function createFromQuotation(user: User, versionId: string, kind = "thi_cong", now = new Date()) {
-  assertAny(user, ["contracts.create"]);
-  if (!(kind in contractKindLabel)) throw new AppError("Chọn một trong ba loại hợp đồng.", 400);
+export async function createFromQuotation(
+  user: User,
+  versionId: string,
+  input: { kind?: string; name?: string; signedOn?: string } | string = "thi_cong",
+  now = new Date(),
+) {
+  assertAny(user, ["contracts.create", "quotations.create"]);
+  const opts = typeof input === "string" ? { kind: input } : input;
+  const loai = opts.kind && opts.kind in contractKindLabel ? opts.kind : "thi_cong";
+  const signedOn = String(opts.signedOn ?? "").trim();
+  if (signedOn && !isYmd(signedOn)) throw new AppError("Ngày ký không hợp lệ.", 400);
   const version = await prisma.quotationVersion.findUnique({
     where: { id: versionId },
-    include: { items: { orderBy: { sortOrder: "asc" } }, quotation: true, contract: { select: { id: true } } },
+    include: {
+      quotation: true,
+      contract: { select: { id: true } },
+      items: { orderBy: { sortOrder: "asc" } },
+    },
   });
   if (!version) throw new AppError("Không tìm thấy phiên bản báo giá.", 404);
-  if (version.customerStatus !== "chap_thuan") throw new AppError("Chỉ tạo hợp đồng từ phiên bản khách đã chấp thuận.", 400);
+  // Báo giá đã duyệt nội bộ là đủ để lập HĐ.
+  if (version.internalStatus !== "da_duyet") throw new AppError("Chỉ lập hợp đồng từ báo giá đã duyệt.", 400);
   if (version.contract) return prisma.contract.findUniqueOrThrow({ where: { id: version.contract.id } });
   assertOwn(user, "projects.view", "projects.view.assigned", version.ownerId);
+
+  const { areaFromSizeMilli } = await import("@/modules/quotations/calc");
+  const ngay = todayYmd(now);
+
   return prisma.$transaction(async (tx) => {
     const again = await tx.contract.findUnique({ where: { quotationVersionId: version.id } });
     if (again) return again;
     const code = await nextCode(tx, "HD", now);
+    const name = (opts.name ?? "").trim() || version.title.trim() || `Hợp đồng ${version.projectName || code}`;
     const contract = await tx.contract.create({
       data: {
         code,
-        kind,
-        name: version.title.trim() || `Hợp đồng ${version.projectName || code}`,
+        kind: loai,
+        name,
         projectId: version.quotation.projectId,
         customerId: version.quotation.customerId,
         quotationVersionId: version.id,
-        priceBasis: "chua_xac_nhan",
+        signedOn: signedOn || null,
+        signStatus: signedOn ? "da_ky" : "chua_ky",
         ownerId: user.id,
-        scopeText: version.includedScope,
-        paymentText: version.paymentTerms,
-        warrantyText: version.warrantyTerms,
-        note: version.internalNote,
-        lines: {
-          create: version.items.map((item, index) => ({
-            kind: "ky_hieu",
-            code: item.positionCode,
-            name: item.name,
-            unit: item.unit,
-            widthMm: item.widthMm,
-            heightMm: item.heightMm,
-            quantity: item.quantity,
-            signedUnitPrice: item.mainUnitPrice,
-            adminUnitPrice: null,
-            taxBps: null,
-            sortOrder: index + 1,
-            note: item.note,
-          })),
-        },
       },
     });
+
+    // Ghi nhận khách đồng ý nếu chưa có — lập HĐ đồng nghĩa đã chốt với khách.
+    if (version.customerStatus !== "chap_thuan") {
+      await tx.quotationVersion.updateMany({
+        where: { quotationId: version.quotationId, customerStatus: "chap_thuan", id: { not: version.id } },
+        data: { customerStatus: "da_thay_the" },
+      });
+      await tx.quotationVersion.update({
+        where: { id: version.id },
+        data: { customerStatus: "chap_thuan", acceptedOn: ngay, revision: { increment: 1 } },
+      });
+      await tx.project.update({
+        where: { id: version.quotation.projectId },
+        data: { stage: "da_chot" },
+      });
+    }
+
+    // Chuyển hạng mục báo giá → hạng mục công trình (nối tiếp STT hiện có).
+    const cuoi = await tx.projectItem.findFirst({
+      where: { projectId: version.quotation.projectId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    });
+    let sortOrder = (cuoi?.sortOrder ?? 0) + 1;
+    for (const item of version.items) {
+      let quantityMilli = 0;
+      if (item.areaOverrideMilli != null && item.areaOverrideMilli > 0) {
+        quantityMilli = item.areaOverrideMilli;
+      } else if (item.widthMm && item.heightMm && item.quantity) {
+        quantityMilli = areaFromSizeMilli(item.widthMm, item.heightMm, item.quantity);
+      } else if (item.quantity > 0) {
+        quantityMilli = item.quantity * 1000;
+      }
+      await tx.projectItem.create({
+        data: {
+          projectId: version.quotation.projectId,
+          sortOrder,
+          symbol: item.positionCode || "",
+          name: item.name,
+          spec: item.spec || "",
+          unit: item.unit || "bộ",
+          quantityMilli,
+          unitPrice: item.calcMethod === "nhom" ? 0 : item.mainUnitPrice,
+          ownerId: version.ownerId || user.id,
+          note: item.note || (item.calcMethod === "nhom" ? "Nhóm từ báo giá" : `Từ báo giá ${version.quotationId}`),
+        },
+      });
+      sortOrder += 1;
+    }
+
     await writeAudit(tx, user.id, "tao", "hop_dong", contract.id, `Tạo ${code} từ báo giá ${version.quotationId} phiên bản ${version.number}`);
     return contract;
   });
@@ -285,26 +314,18 @@ export async function updateContract(user: User, id: string, body: Record<string
   assertAny(user, ["contracts.update", "contracts.create"]);
   rejectAdminPayload(user, body);
   const current = await load(user, id);
-  assertDraft(current);
   const revision = Number(body.revision);
   if (current.revision !== revision) throw new AppError("Hợp đồng vừa được cập nhật. Hãy tải lại.", 409);
-  const signedNumber = String(body.signedNumber ?? current.signedNumber);
-  await assertSignedNumber(current.projectId, signedNumber, current.id);
-  const basis = String(body.priceBasis ?? current.priceBasis);
-  if (!(basis in priceBasisLabel)) throw new AppError("Cơ sở giá không hợp lệ.", 400);
+  const name = String(body.name ?? current.name).trim() || current.name;
+  const signedOnRaw = body.signedOn === undefined ? current.signedOn ?? "" : String(body.signedOn ?? "").trim();
+  if (signedOnRaw && !isYmd(signedOnRaw)) throw new AppError("Ngày ký không hợp lệ.", 400);
   const data: Prisma.ContractUpdateManyMutationInput = {
-    name: String(body.name ?? current.name).trim() || current.name,
-    signedNumber: signedNumber.trim(),
-    priceBasis: basis,
-    scopeText: String(body.scopeText ?? current.scopeText),
-    paymentText: String(body.paymentText ?? current.paymentText),
-    warrantyText: String(body.warrantyText ?? current.warrantyText),
-    note: String(body.note ?? current.note),
-    declaredSignedTotal: optionalInt(body.declaredSignedTotal === undefined ? current.declaredSignedTotal : body.declaredSignedTotal, "Tổng ký khai báo"),
+    name,
+    signedOn: signedOnRaw || null,
     revision: { increment: 1 },
   };
-  if (seesAdminPrice(user) && Object.prototype.hasOwnProperty.call(body, "declaredAdminTotal")) {
-    data.declaredAdminTotal = optionalInt(body.declaredAdminTotal, "Tổng quản trị khai báo");
+  if (signedOnRaw) {
+    data.signStatus = "da_ky";
   }
   const updated = await prisma.contract.updateMany({ where: { id, revision }, data });
   if (updated.count === 0) throw new AppError("Hợp đồng vừa được cập nhật. Hãy tải lại.", 409);
@@ -438,9 +459,7 @@ export async function actContract(user: User, id: string, action: string, body: 
   if (action === "gui-duyet") {
     assertAny(user, ["contracts.submit", "contracts.create"]);
     if (current.internalStatus !== "nhap" && current.internalStatus !== "yeu_cau_chinh") throw new AppError("Chỉ gửi duyệt từ bản nháp.", 400);
-    if (!current.lines.some((line) => line.kind === "ky_hieu") && current.declaredSignedTotal === null) {
-      throw new AppError("Cần ít nhất một ký hiệu hoặc tổng ký khai báo trước khi gửi duyệt.", 400);
-    }
+    if (!current.name.trim()) throw new AppError("Cần tên hợp đồng trước khi gửi duyệt.", 400);
     await prisma.contract.update({ where: { id }, data: { internalStatus: "cho_duyet", revision: { increment: 1 } } });
   } else if (action === "duyet") {
     assertAny(user, ["contracts.approve"]);
@@ -467,7 +486,11 @@ export async function actContract(user: User, id: string, action: string, body: 
     if (current.signStatus !== "da_ky") throw new AppError("Chưa ghi nhận ký thì chưa đặt hiệu lực.", 400);
     const effectiveOn = String(body.effectiveOn ?? "").trim();
     if (!effectiveOn) throw new AppError("Cần ngày hiệu lực.", 400);
-    await prisma.contract.update({ where: { id }, data: { effectStatus: "co_hieu_luc", effectiveOn, executionStatus: "dang_thuc_hien", revision: { increment: 1 } } });
+    await prisma.contract.update({
+      where: { id },
+      data: { effectStatus: "co_hieu_luc", executionStatus: "dang_thuc_hien", revision: { increment: 1 } },
+    });
+    void effectiveOn;
   } else if (action === "hieu-luc-phu-luc") {
     assertAny(user, ["contracts.effect"]);
     const changeId = String(body.changeId ?? "");
