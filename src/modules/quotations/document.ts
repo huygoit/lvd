@@ -1,5 +1,4 @@
 import { dayCount, formatYmd } from "@/shared/lib/dates";
-import { formatCount } from "@/shared/lib/money";
 
 export function printCode(customerCode: string) {
   return `BG-${customerCode}/LVD`;
@@ -25,7 +24,7 @@ export function pickText(...values: Array<string | null | undefined>) {
   return "";
 }
 
-/** Dòng ghi chú tự chèn khi chọn báo giá chưa gồm VAT. */
+/** Dòng ghi chú cố định khi báo giá chưa gồm VAT (không nằm trong ô ghi chú tay). */
 export const CHUA_VAT_NOTE = "- Báo giá chưa bao gồm VAT";
 
 function laDongChuaVat(line: string) {
@@ -33,65 +32,117 @@ function laDongChuaVat(line: string) {
   return text === CHUA_VAT_NOTE || text === "Báo giá chưa bao gồm VAT" || text === "- Báo giá chưa bao gồm VAT";
 }
 
-/** Thêm / gỡ dòng chưa VAT trong ghi chú theo cấu hình thuế. */
-export function withChuaVatNote(note: string | null | undefined, chuaVat: boolean) {
-  const lines = String(note ?? "")
+/** Gỡ dòng chưa VAT khỏi ghi chú người dùng (tránh lẫn vào ô textarea). Chỉ gọi lúc load/lưu. */
+export function stripChuaVatNote(note: string | null | undefined) {
+  return String(note ?? "")
     .split(/\r?\n/)
-    .map((line) => line.trimEnd());
-  const coDong = lines.some(laDongChuaVat);
-  if (chuaVat) {
-    if (coDong) return lines.join("\n").trim();
-    const body = lines.join("\n").trim();
-    return body ? `${body}\n${CHUA_VAT_NOTE}` : CHUA_VAT_NOTE;
-  }
-  return lines.filter((line) => !laDongChuaVat(line)).join("\n").trim();
+    .filter((line) => !laDongChuaVat(line))
+    .join("\n")
+    .replace(/^\n+/, "")
+    .replace(/\n+$/, "");
+}
+
+/** @deprecated Giữ tương thích — không còn chèn vào note; chỉ strip. */
+export function withChuaVatNote(note: string | null | undefined, _chuaVat?: boolean) {
+  return stripChuaVatNote(note);
 }
 
 /** Câu bảo hành đưa ra bản in / đồng bộ warrantyTerms. */
 export function warrantyClause(months: number) {
-  return months > 0 ? `Bảo hành: ${months} tháng.` : "Không áp dụng bảo hành.";
+  return months > 0 ? `Bảo hành kỹ thuật: ${months} tháng.` : "Không áp dụng bảo hành kỹ thuật.";
 }
 
-/** Câu thời gian thi công — rỗng thì không đưa vào điều khoản. */
-export function constructionClause(constructionTime: string) {
-  const text = constructionTime.trim();
-  return text ? `Thời gian thi công: ${text}.` : "";
+/** Một đợt thanh toán trên báo giá. */
+export type PaymentMilestone = {
+  content: string;
+  value: string;
+};
+
+/** Mẫu 3 đợt mặc định khi tạo báo giá mới — value là số % (vd "40"). */
+export function defaultPaymentMilestones(): PaymentMilestone[] {
+  return [
+    { content: "Tạm ứng, ngay sau khi ký kết hợp đồng", value: "40" },
+    { content: "Ngay khi tập kết vật tư xuống công trình", value: "30" },
+    { content: "Quyết toán còn lại", value: "30" },
+  ];
 }
 
-/** Câu thanh toán từ tạm ứng + ngày sau nghiệm thu. */
-export function paymentClause(input: { advanceAmount: number; advanceDays: number; paymentDays: number }) {
-  if (input.advanceAmount > 0) {
-    return `Thanh toán: tạm ứng ${formatCount(input.advanceAmount)} đồng trong vòng ${input.advanceDays} ngày làm việc sau khi ký hợp đồng; phần còn lại thanh toán trong ${input.paymentDays} ngày kể từ ngày nghiệm thu bàn giao.`;
+/** Lấy số phần trăm từ chuỗi lưu (chịu dữ liệu cũ dạng "40% giá trị…"). */
+export function soPhanTramThanhToan(raw: string | null | undefined) {
+  const match = String(raw ?? "").match(/\d+/);
+  return match ? match[0] : "";
+}
+
+/** Hiển thị giá trị đợt trên bản in / câu điều khoản. */
+export function nhanGiaTriThanhToan(raw: string | null | undefined) {
+  const so = soPhanTramThanhToan(raw);
+  return so ? `${so}% giá trị hợp đồng` : "";
+}
+
+/** Chuẩn hóa JSON / payload đợt thanh toán — value chỉ giữ số %. */
+export function chuanDotThanhToan(raw: unknown): PaymentMilestone[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PaymentMilestone[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const item = row as Record<string, unknown>;
+    const content = String(item.content ?? "").trim();
+    const value = soPhanTramThanhToan(String(item.value ?? ""));
+    if (!content && !value) continue;
+    out.push({ content, value });
   }
-  if (input.paymentDays > 0) {
-    return `Thanh toán trong ${input.paymentDays} ngày kể từ ngày nghiệm thu bàn giao.`;
-  }
+  return out;
+}
+
+/** Tổng % các đợt thanh toán. */
+export function tongPhanTramThanhToan(milestones: PaymentMilestone[] | unknown) {
+  return chuanDotThanhToan(milestones).reduce((sum, row) => sum + Number(row.value || 0), 0);
+}
+
+/** Rỗng nếu hợp lệ; có chữ thì tổng % > 100. */
+export function loiTongPhanTramThanhToan(milestones: PaymentMilestone[] | unknown) {
+  const tong = tongPhanTramThanhToan(milestones);
+  if (tong > 100) return `Tổng tỷ lệ thanh toán là ${tong}%, không được vượt quá 100%.`;
   return "";
 }
 
-/** Đồng bộ các cột chữ từ bộ số/ô có cấu trúc (một nguồn sự thật). */
+/** Các dòng đợt thanh toán (không gồm tiêu đề) — dùng in/web thụt lề. */
+export function paymentMilestoneLines(milestones: PaymentMilestone[]) {
+  return chuanDotThanhToan(milestones).map((row) => {
+    const so = soPhanTramThanhToan(row.value);
+    const noiDung = row.content.trim() || "Đợt thanh toán";
+    if (so) return `${noiDung}: ${so}% giá trị hợp đồng`;
+    return `${noiDung}:`;
+  });
+}
+
+/**
+ * Câu thanh toán dạng chữ (đồng bộ paymentTerms).
+ * Form: - Thanh toán: rồi từng đợt một dòng.
+ */
+export function paymentClause(milestones: PaymentMilestone[]) {
+  const dong = paymentMilestoneLines(milestones);
+  if (!dong.length) return "";
+  return `- Thanh toán:\n${dong.join("\n")}`;
+}
+
+/** Đồng bộ các cột chữ từ bảo hành + đợt thanh toán. */
 export function derivedCommercialTexts(input: {
-  constructionTime: string;
   warrantyMonths: number;
-  advanceAmount: number;
-  advanceDays: number;
-  paymentDays: number;
+  paymentMilestones: PaymentMilestone[];
 }) {
   return {
-    deliveryTerms: constructionClause(input.constructionTime).replace(/^Thời gian thi công:\s*/, "").replace(/\.$/, ""),
+    deliveryTerms: "",
     warrantyTerms: warrantyClause(input.warrantyMonths),
-    paymentTerms: paymentClause(input),
+    paymentTerms: paymentClause(input.paymentMilestones),
   };
 }
 
 export function quoteClauses(input: {
   quoteDate: string;
   validUntil: string;
-  constructionTime: string;
   warrantyMonths: number;
-  advanceAmount: number;
-  advanceDays: number;
-  paymentDays: number;
+  paymentMilestones: PaymentMilestone[];
 }) {
   const days = dayCount(input.quoteDate, input.validUntil);
   const lines = [
@@ -99,10 +150,8 @@ export function quoteClauses(input: {
       ? `Báo giá có hiệu lực ${days} ngày kể từ ngày báo giá (đến hết ngày ${formatYmd(input.validUntil)}). Khối lượng phát sinh ngoài phạm vi sẽ được báo giá bổ sung.`
       : "Khối lượng phát sinh ngoài phạm vi sẽ được báo giá bổ sung.",
   ];
-  const construction = constructionClause(input.constructionTime);
-  if (construction) lines.push(construction);
   lines.push(warrantyClause(input.warrantyMonths));
-  const payment = paymentClause(input);
+  const payment = paymentClause(input.paymentMilestones);
   if (payment) lines.push(payment);
   return lines;
 }

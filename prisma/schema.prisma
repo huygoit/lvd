@@ -491,16 +491,12 @@ model QuotationVersion {
   validUntil            String
   authorId              String
   ownerId               String
-  // Thời gian thi công (vd: "15 ngày kể từ ngày ký").
-  constructionTime      String   @default("") @map("scheduleText")
-  // Các trường chữ dưới đây đồng bộ từ số khi lưu — dùng khi tạo hợp đồng / bản cũ.
+  // Các trường chữ dưới đây đồng bộ khi lưu — dùng khi tạo hợp đồng / bản cũ.
   paymentTerms          String   @default("")
   deliveryTerms         String   @default("")
   warrantyTerms         String   @default("")
   includedScope         String   @default("")
   excludedScope         String   @default("")
-  // Ghi chú nội bộ — không in ra khách.
-  internalNote          String   @default("") @map("note")
   // Ghi chú in ra khách trên bản báo giá (mục Ghi chú).
   quoteNote             String   @default("")
   customerName          String   @default("")
@@ -524,12 +520,10 @@ model QuotationVersion {
   taxBps                Int      @default(1000)
   // 0 = không áp dụng bảo hành (câu in cố định).
   warrantyMonths        Int      @default(0)
-  // 0 = không thu tạm ứng.
-  advanceAmount         Int      @default(0)
-  // Số ngày làm việc để tạm ứng (chỉ dùng khi advanceAmount > 0).
-  advanceDays           Int      @default(0)
-  // Số ngày thanh toán sau nghiệm thu.
-  paymentDays           Int      @default(0)
+  // Đợt thanh toán: [{ content, value }] — value là số % (vd "40").
+  paymentMilestones     Json     @default("[]")
+  // Lời chào trên bản in — snapshot từ cấu hình tiêu chuẩn lúc tạo.
+  greeting              String   @default("")
   internalStatus        String   @default("nhap")
   customerStatus        String   @default("chua_gui")
   acceptedOn            String?
@@ -567,20 +561,23 @@ model QuotationItem {
   quantity            Int
   // Khối lượng m² ×1000 do người nhập đè. Null = tính từ rộng × cao × số lượng.
   areaOverrideMilli   Int?
-  mainUnitPrice       Int
+  // Tiền dùng BigInt — Int4 tối đa ~2.1 tỷ, báo giá công trình dễ vượt.
+  mainUnitPrice       BigInt
   accessorySeparate   Boolean @default(false)
-  accessoryUnitPrice  Int     @default(0)
+  accessoryUnitPrice  BigInt  @default(0)
+  // Danh sách phụ kiện con: [{ name, unit, quantity, unitPrice }].
+  accessories         Json    @default("[]")
   discountMode        String  @default("khong")
   discountBps         Int     @default(0)
-  discountAmount      Int     @default(0)
+  discountAmount      BigInt  @default(0)
   taxMode             String
   taxBps              Int     @default(0)
-  mainAmount          Int
-  accessoryAmount     Int
-  discountValue       Int
-  pretax              Int
-  taxAmount           Int?
-  posttax             Int
+  mainAmount          BigInt
+  accessoryAmount     BigInt
+  discountValue       BigInt
+  pretax              BigInt
+  taxAmount           BigInt?
+  posttax             BigInt
   note                String @default("")
 
   @@index([versionId])
@@ -671,6 +668,22 @@ model QuoteCategory {
   updatedAt DateTime            @updatedAt
 
   @@index([groupId, sortOrder])
+}
+
+// Cấu hình tiêu chuẩn báo giá — một bản mặc định (id = mac-dinh).
+model QuotationStandard {
+  id                String   @id
+  // Lời chào trên bản in (trước bảng hạng mục).
+  greeting          String   @default("Xin gửi báo giá với thông tin như sau:")
+  // Số ngày hiệu lực báo giá mặc định khi tạo mới.
+  validityDays      Int      @default(15)
+  // Số tháng bảo hành mặc định (0 = không áp dụng).
+  warrantyMonths    Int      @default(0)
+  // Thuế GTGT mặc định (phần vạn). -1 = chưa bao gồm VAT.
+  defaultTaxBps     Int      @default(1000)
+  // Đợt thanh toán mặc định: [{ content, value }] — value là số %.
+  paymentMilestones Json     @default("[]")
+  updatedAt         DateTime @default(now()) @updatedAt
 }
 
 // Biểu mẫu Excel báo giá — file gốc + sheet dùng để đổ biến.

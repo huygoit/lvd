@@ -28,8 +28,13 @@ export async function POST(request: Request) {
       projectName: String(body.projectName ?? ""),
       location: String(body.location ?? ""),
       title: String(body.title ?? ""),
-      taxPercent: Number(body.taxPercent ?? 10),
-      validityDays: Number(body.validityDays ?? 15),
+      // Không gửi thì server lấy thuế / hiệu lực từ tiêu chuẩn báo giá.
+      ...(body.taxPercent !== undefined && body.taxPercent !== null && body.taxPercent !== ""
+        ? { taxPercent: Number(body.taxPercent) }
+        : {}),
+      ...(body.validityDays !== undefined && body.validityDays !== null && body.validityDays !== ""
+        ? { validityDays: Number(body.validityDays) }
+        : {}),
     });
   });
 }

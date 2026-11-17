@@ -9,8 +9,20 @@ import { addDays, isYmd, todayYmd } from "@/shared/lib/dates";
 import { writeAudit } from "@/modules/system/audit";
 import { assertAny } from "@/modules/system/access";
 import { nextCode } from "@/modules/system/codes";
-import { applyTax, priceItem, taxRateBps, type ItemInput } from "@/modules/quotations/calc";
-import { derivedCommercialTexts, withChuaVatNote } from "@/modules/quotations/document";
+import {
+  applyTax,
+  priceItem,
+  taxRateBps,
+  type AccessoryInput,
+  type ItemInput,
+} from "@/modules/quotations/calc";
+import {
+  chuanDotThanhToan,
+  derivedCommercialTexts,
+  loiTongPhanTramThanhToan,
+  stripChuaVatNote,
+} from "@/modules/quotations/document";
+import { getTieuChuanBaoGia } from "@/modules/settings/quote-standard";
 import { canonMeasureUnit } from "@/shared/catalog/units";
 
 export type LineInput = ItemInput & {
@@ -24,19 +36,34 @@ export type LineInput = ItemInput & {
   calcMethod?: string;
 };
 
+/** Chuẩn hóa phụ kiện từ client / JSON DB trước khi tính và lưu. */
+function chuanPhuKien(raw: unknown): AccessoryInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AccessoryInput[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const item = row as Record<string, unknown>;
+    const name = String(item.name ?? "").trim();
+    const unit = String(item.unit ?? "bộ").trim() || "bộ";
+    const quantity = Number(item.quantity ?? 0);
+    const unitPrice = Number(item.unitPrice ?? 0);
+    if (!name && !quantity && !unitPrice) continue;
+    if (!Number.isInteger(quantity) || quantity < 0) throw new AppError("Số lượng phụ kiện phải là số nguyên không âm.", 400);
+    if (!Number.isInteger(unitPrice) || unitPrice < 0) throw new AppError("Đơn giá phụ kiện phải là số nguyên không âm.", 400);
+    out.push({ name, unit, quantity, unitPrice });
+  }
+  return out;
+}
+
 /** Bộ trường lưu nháp — hạng mục (title) cố định từ lúc tạo; người/ngày báo giá không sửa tay. */
 export type DraftInput = {
   revision: number;
   /** Số ngày hiệu lực kể từ ngày báo giá; server tự ra validUntil. */
   validityDays: number;
-  constructionTime: string;
-  internalNote: string;
   quoteNote: string;
   taxPercent: number;
   warrantyMonths: number;
-  advanceAmount: number;
-  advanceDays: number;
-  paymentDays: number;
+  paymentMilestones: { content: string; value: string }[];
   items: LineInput[];
 };
 
@@ -115,8 +142,26 @@ function countField(value: number, label: string) {
   return value;
 }
 
+/** BigInt tiền → number cho API/UI (JS Number an toàn tới ~9e15). */
+function tienSo(value: bigint | number | null | undefined) {
+  if (value === null || value === undefined) return value as null | undefined;
+  return typeof value === "bigint" ? Number(value) : value;
+}
+
 function presentItem(item: Prisma.QuotationItemGetPayload<object>) {
-  return item;
+  return {
+    ...item,
+    mainUnitPrice: tienSo(item.mainUnitPrice) ?? 0,
+    accessoryUnitPrice: tienSo(item.accessoryUnitPrice) ?? 0,
+    discountAmount: tienSo(item.discountAmount) ?? 0,
+    mainAmount: tienSo(item.mainAmount) ?? 0,
+    accessoryAmount: tienSo(item.accessoryAmount) ?? 0,
+    discountValue: tienSo(item.discountValue) ?? 0,
+    pretax: tienSo(item.pretax) ?? 0,
+    taxAmount: tienSo(item.taxAmount) ?? null,
+    posttax: tienSo(item.posttax) ?? 0,
+    accessories: chuanPhuKien(item.accessories),
+  };
 }
 
 export async function listQuotations(user: User, filters: { q?: string; internal?: string; customer?: string; ownerId?: string; from?: string; to?: string }) {
@@ -162,7 +207,9 @@ export async function listQuotations(user: User, filters: { q?: string; internal
     customerStatus: row.current.customerStatus,
     ownerId: row.current.ownerId,
     posttax: applyTax(
-      row.current.items.filter((item) => item.calcMethod !== "nhom").reduce((sum, item) => sum + item.pretax, 0),
+      row.current.items
+        .filter((item) => item.calcMethod !== "nhom")
+        .reduce((sum, item) => sum + (tienSo(item.pretax) ?? 0), 0),
       row.current.taxBps,
     ).posttax,
     updatedAt: row.current.updatedAt.toISOString(),
@@ -217,6 +264,7 @@ export async function getQuotation(user: User, id: string) {
       const { contract, ...rest } = version;
       return {
         ...rest,
+        paymentMilestones: chuanDotThanhToan(version.paymentMilestones),
         contractId: contract?.id ?? null,
         contractCode: contract?.code ?? null,
         authorName: authorName.get(version.authorId) ?? "",
@@ -279,13 +327,25 @@ export async function createQuotation(
     if (customer.ownerId !== user.id) throw new AppError("Bạn không phụ trách khách hàng này.", 403);
   }
   const profile = await company();
+  const tieuChuan = await getTieuChuanBaoGia();
   const today = todayYmd(now);
-  // taxPercent < 0 (hoặc -1) = chưa bao gồm VAT.
+  // Ưu tiên thuế từ form tạo; không truyền thì lấy tiêu chuẩn báo giá.
   const taxBps =
     input.taxPercent !== undefined && input.taxPercent < 0
       ? -1
-      : taxRateBps(input.taxPercent ?? profile.defaultTaxBps / 100);
-  const validityDays = countField(Number(input.validityDays ?? 15), "Số ngày hiệu lực");
+      : input.taxPercent !== undefined
+        ? taxRateBps(input.taxPercent)
+        : tieuChuan.taxPercent === "chua"
+          ? -1
+          : taxRateBps(Number(tieuChuan.taxPercent));
+  const validityDays = countField(
+    Number(input.validityDays ?? tieuChuan.validityDays),
+    "Số ngày hiệu lực",
+  );
+  const commercial = derivedCommercialTexts({
+    warrantyMonths: tieuChuan.warrantyMonths,
+    paymentMilestones: tieuChuan.paymentMilestones,
+  });
   return prisma.$transaction(async (tx) => {
     let projectId = input.projectId;
     if (!projectId) {
@@ -322,9 +382,14 @@ export async function createQuotation(
         authorId: user.id,
         ownerId: user.id,
         taxBps,
+        warrantyMonths: tieuChuan.warrantyMonths,
+        greeting: tieuChuan.greeting,
+        paymentMilestones: tieuChuan.paymentMilestones,
+        paymentTerms: commercial.paymentTerms,
+        warrantyTerms: commercial.warrantyTerms,
+        deliveryTerms: commercial.deliveryTerms,
         ...snapshot(customer, project, profile),
-        // Chọn chưa VAT thì tự có dòng ghi chú tương ứng.
-        quoteNote: withChuaVatNote("", taxBps < 0),
+        quoteNote: "",
       },
     });
     await writeAudit(tx, user.id, "tao", "bao_gia", quotation.id, `Tạo ${quotation.code} phiên bản 1`);
@@ -353,6 +418,7 @@ function pricedLines(items: LineInput[]) {
         mainUnitPrice: 0,
         accessorySeparate: false,
         accessoryUnitPrice: 0,
+        accessories: [] as AccessoryInput[],
         discountMode: "khong",
         discountBps: 0,
         discountAmount: 0,
@@ -369,8 +435,10 @@ function pricedLines(items: LineInput[]) {
     }
     // Có khối lượng nhập tay thì bỏ rộng/cao khi lưu — đúng quy ước form.
     const override = item.areaOverride != null && item.areaOverride > 0 ? item.areaOverride : null;
+    const accessories = chuanPhuKien(item.accessories);
     const priced = priceItem({
       ...item,
+      accessories,
       accessoryUnitPrice: 0,
       widthMm: override !== null ? null : item.widthMm,
       heightMm: override !== null ? null : item.heightMm,
@@ -395,15 +463,16 @@ function pricedLines(items: LineInput[]) {
       quantity: override !== null ? 0 : item.quantity,
       areaOverrideMilli: override !== null ? priced.areaMilli : null,
       mainUnitPrice: item.mainUnitPrice,
-      accessorySeparate: false,
+      accessorySeparate: accessories.length > 0,
       accessoryUnitPrice: 0,
+      accessories,
       discountMode: "khong",
       discountBps: 0,
       discountAmount: 0,
       taxMode: "khong_ap_dung",
       taxBps: 0,
       mainAmount: priced.mainAmount,
-      accessoryAmount: 0,
+      accessoryAmount: priced.accessoryAmount,
       discountValue: 0,
       pretax: priced.pretax,
       taxAmount: null as number | null,
@@ -451,18 +520,14 @@ export async function saveDraft(user: User, quotationId: string, versionId: stri
   const taxBps = input.taxPercent < 0 ? -1 : taxRateBps(input.taxPercent);
   const validityDays = countField(input.validityDays, "Số ngày hiệu lực");
   const warrantyMonths = countField(input.warrantyMonths, "Số tháng bảo hành");
-  const advanceAmount = countField(input.advanceAmount, "Tiền tạm ứng");
-  // Không thu tạm ứng thì không giữ số ngày tạm ứng.
-  const advanceDays = advanceAmount > 0 ? countField(input.advanceDays, "Số ngày tạm ứng") : 0;
-  const paymentDays = countField(input.paymentDays, "Số ngày thanh toán sau nghiệm thu");
-  const constructionTime = text(input.constructionTime);
+  const paymentMilestones = chuanDotThanhToan(input.paymentMilestones);
+  const loiPhanTram = loiTongPhanTramThanhToan(paymentMilestones);
+  if (loiPhanTram) throw new AppError(loiPhanTram, 400);
   const commercial = derivedCommercialTexts({
-    constructionTime,
     warrantyMonths,
-    advanceAmount,
-    advanceDays,
-    paymentDays,
+    paymentMilestones,
   });
+  const tieuChuan = await getTieuChuanBaoGia();
   const version = await prisma.$transaction(async (tx) => {
     const current = await tx.quotationVersion.findFirst({ where: { id: versionId, quotationId } });
     if (!current) throw new AppError("Không tìm thấy phiên bản.", 404);
@@ -471,21 +536,20 @@ export async function saveDraft(user: User, quotationId: string, versionId: stri
     if (!isYmd(current.quoteDate)) throw new AppError("Ngày báo giá không hợp lệ.", 500);
     // Hiệu lực luôn tính từ ngày báo giá trên server — tránh lệch ngày từ máy client.
     const validUntil = validityDays > 0 ? addDays(current.quoteDate, validityDays) : current.quoteDate;
+    // Báo giá cũ thiếu greeting thì bổ sung từ cấu hình tiêu chuẩn.
+    const greeting = text(current.greeting) || tieuChuan.greeting;
     const saved = await tx.quotationVersion.updateMany({
       where: { id: versionId, revision: input.revision },
       data: {
         validUntil,
-        constructionTime,
+        greeting,
+        paymentMilestones,
         paymentTerms: commercial.paymentTerms,
         deliveryTerms: commercial.deliveryTerms,
         warrantyTerms: commercial.warrantyTerms,
         taxBps,
         warrantyMonths,
-        advanceAmount,
-        advanceDays,
-        paymentDays,
-        internalNote: text(input.internalNote),
-        quoteNote: withChuaVatNote(input.quoteNote, taxBps < 0),
+        quoteNote: stripChuaVatNote(input.quoteNote),
         revision: { increment: 1 },
       },
     });
@@ -617,20 +681,17 @@ export async function createNextVersion(user: User, quotationId: string, version
         validUntil: source.validUntil < todayYmd(now) ? addDays(todayYmd(now), 15) : source.validUntil,
         authorId: user.id,
         ownerId: user.id,
-        constructionTime: source.constructionTime,
         paymentTerms: source.paymentTerms,
         deliveryTerms: source.deliveryTerms,
         warrantyTerms: source.warrantyTerms,
         includedScope: source.includedScope,
         excludedScope: source.excludedScope,
-        internalNote: source.internalNote,
         quoteNote: source.quoteNote,
         ...party,
         taxBps: source.taxBps,
         warrantyMonths: source.warrantyMonths,
-        advanceAmount: source.advanceAmount,
-        advanceDays: source.advanceDays,
-        paymentDays: source.paymentDays,
+        greeting: source.greeting,
+        paymentMilestones: chuanDotThanhToan(source.paymentMilestones),
         internalStatus: "nhap",
         customerStatus: "chua_gui",
       },
@@ -655,6 +716,7 @@ export async function createNextVersion(user: User, quotationId: string, version
           mainUnitPrice: item.mainUnitPrice,
           accessorySeparate: item.accessorySeparate,
           accessoryUnitPrice: item.accessoryUnitPrice,
+          accessories: chuanPhuKien(item.accessories),
           discountMode: item.discountMode,
           discountBps: item.discountBps,
           discountAmount: item.discountAmount,
@@ -699,19 +761,16 @@ export async function copyQuotation(user: User, quotationId: string, versionId: 
         validUntil: addDays(todayYmd(now), 15),
         authorId: user.id,
         ownerId: user.id,
-        constructionTime: source.constructionTime,
         paymentTerms: source.paymentTerms,
         deliveryTerms: source.deliveryTerms,
         warrantyTerms: source.warrantyTerms,
         includedScope: source.includedScope,
         excludedScope: source.excludedScope,
-        internalNote: source.internalNote,
         quoteNote: source.quoteNote,
         taxBps: source.taxBps,
         warrantyMonths: source.warrantyMonths,
-        advanceAmount: source.advanceAmount,
-        advanceDays: source.advanceDays,
-        paymentDays: source.paymentDays,
+        greeting: source.greeting,
+        paymentMilestones: chuanDotThanhToan(source.paymentMilestones),
         ...snapshot(project.customer, project, profile),
       },
     });
@@ -734,6 +793,7 @@ export async function copyQuotation(user: User, quotationId: string, versionId: 
           mainUnitPrice: item.mainUnitPrice,
           accessorySeparate: item.accessorySeparate,
           accessoryUnitPrice: item.accessoryUnitPrice,
+          accessories: chuanPhuKien(item.accessories),
           discountMode: item.discountMode,
           discountBps: item.discountBps,
           discountAmount: item.discountAmount,
@@ -789,20 +849,20 @@ export async function compareVersions(user: User, quotationId: string, leftId: s
   const removed = left.items.filter((item) => !matched.has(item.id)).map((item) => item.name);
   const terms = [
     ["Thuế suất", left.taxBps, right.taxBps],
-    ["Thời gian thi công", left.constructionTime, right.constructionTime],
-    ["Bảo hành (tháng)", left.warrantyMonths, right.warrantyMonths],
-    ["Tạm ứng", left.advanceAmount, right.advanceAmount],
-    ["Tạm ứng (ngày làm việc)", left.advanceDays, right.advanceDays],
-    ["Thanh toán sau nghiệm thu (ngày)", left.paymentDays, right.paymentDays],
-    ["Ghi chú nội bộ", left.internalNote, right.internalNote],
+    ["Bảo hành kỹ thuật (tháng)", left.warrantyMonths, right.warrantyMonths],
+    ["Đợt thanh toán", JSON.stringify(chuanDotThanhToan(left.paymentMilestones)), JSON.stringify(chuanDotThanhToan(right.paymentMilestones))],
     ["Ghi chú", left.quoteNote, right.quoteNote],
   ].filter(([, before, after]) => before !== after).map(([label]) => String(label));
   const leftTotal = applyTax(
-    left.items.filter((item) => item.calcMethod !== "nhom").reduce((sum, item) => sum + item.pretax, 0),
+    left.items
+      .filter((item) => item.calcMethod !== "nhom")
+      .reduce((sum, item) => sum + (tienSo(item.pretax) ?? 0), 0),
     left.taxBps,
   ).posttax;
   const rightTotal = applyTax(
-    right.items.filter((item) => item.calcMethod !== "nhom").reduce((sum, item) => sum + item.pretax, 0),
+    right.items
+      .filter((item) => item.calcMethod !== "nhom")
+      .reduce((sum, item) => sum + (tienSo(item.pretax) ?? 0), 0),
     right.taxBps,
   ).posttax;
   return { added, removed, changed, terms, leftTotal, rightTotal, delta: rightTotal - leftTotal };

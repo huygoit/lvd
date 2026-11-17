@@ -17,17 +17,14 @@ export async function PUT(request: Request, context: Context) {
     const { id } = await context.params;
     const body = await readJson(request);
     const items = Array.isArray(body.items) ? (body.items as LineInput[]) : [];
+    const paymentMilestones = Array.isArray(body.paymentMilestones) ? body.paymentMilestones : [];
     return saveDraft(user, id, String(body.versionId ?? ""), {
       revision: Number(body.revision),
       validityDays: Number(body.validityDays ?? 0),
-      constructionTime: String(body.constructionTime ?? ""),
-      internalNote: String(body.internalNote ?? ""),
       quoteNote: String(body.quoteNote ?? ""),
       taxPercent: Number(body.taxPercent ?? 10),
       warrantyMonths: Number(body.warrantyMonths ?? 0),
-      advanceAmount: Number(body.advanceAmount ?? 0),
-      advanceDays: Number(body.advanceDays ?? 0),
-      paymentDays: Number(body.paymentDays ?? 0),
+      paymentMilestones,
       items,
     });
   });

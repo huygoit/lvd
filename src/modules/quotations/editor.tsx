@@ -1,8 +1,8 @@
 "use client";
 
-import { Copy, FileSignature, Mail, MessageCircle, Plus, Save, Trash2, X } from "lucide-react";
+import { Copy, FileSignature, GripVertical, Mail, MessageCircle, Plus, Save, Trash2, X } from "lucide-react";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as SuKienChuot } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as SuKienChuot } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { callApi } from "@/shared/client/api";
@@ -14,7 +14,14 @@ import { NgayNhap } from "@/shared/components/ngay-nhap";
 import { addDays, dayCount, formatYmd } from "@/shared/lib/dates";
 import { digitsVnd, formatCount, formatVnd } from "@/shared/lib/money";
 import { customerFollowLabel } from "@/modules/customers/labels";
-import { withChuaVatNote } from "@/modules/quotations/document";
+import {
+  CHUA_VAT_NOTE,
+  loiTongPhanTramThanhToan,
+  paymentMilestoneLines,
+  soPhanTramThanhToan,
+  stripChuaVatNote,
+  tongPhanTramThanhToan,
+} from "@/modules/quotations/document";
 import { QuoteStatusBadges } from "@/modules/quotations/quote-sheet";
 import {
   applyTax,
@@ -59,6 +66,15 @@ function writeFlash(text: string) {
   return payload;
 }
 
+/** Phụ kiện con dưới dòng cửa — số lưu dạng chuỗi để gõ trên form. */
+type PhuKienDong = {
+  key: string;
+  name: string;
+  unit: string;
+  quantity: string;
+  unitPrice: string;
+};
+
 type Line = {
   key: string;
   sourceItemId: string | null;
@@ -73,6 +89,7 @@ type Line = {
   /** Khối lượng nhập tay (m²). Rỗng = tính từ rộng × cao × SL. */
   areaOverride: string;
   mainUnitPrice: string;
+  accessories: PhuKienDong[];
 };
 
 export type EditorItem = {
@@ -88,6 +105,7 @@ export type EditorItem = {
   areaOverrideMilli: number | null;
   mainUnitPrice: number;
   pretax: number;
+  accessories?: { name?: string; unit?: string; quantity: number; unitPrice: number }[];
 };
 
 export type EditorVersion = {
@@ -101,14 +119,10 @@ export type EditorVersion = {
   ownerId: string;
   internalStatus: string;
   customerStatus: string;
-  constructionTime: string;
-  internalNote: string;
   quoteNote: string;
   taxBps: number;
   warrantyMonths: number;
-  advanceAmount: number;
-  advanceDays: number;
-  paymentDays: number;
+  paymentMilestones: { content: string; value: string }[];
   changeReason: string;
   items: EditorItem[];
   files: { id: string; fileName: string; size: number; locked: boolean }[];
@@ -116,6 +130,22 @@ export type EditorVersion = {
   deliveries: { id: string; channel: string; recipientName: string; note: string; sentAt: string }[];
   responses: { id: string; status: string; occurredOn: string; confirmerName: string; note: string }[];
 };
+
+type DotThanhToan = { key: string; content: string; value: string };
+
+function blankDot(): DotThanhToan {
+  return { key: crypto.randomUUID(), content: "", value: "" };
+}
+
+function fromMilestones(rows: { content: string; value: string }[] | undefined): DotThanhToan[] {
+  if (!rows?.length) return [blankDot()];
+  return rows.map((row) => ({
+    key: crypto.randomUUID(),
+    content: row.content,
+    // Chỉ giữ số % — bỏ chữ thừa từ bản cũ nếu có.
+    value: soPhanTramThanhToan(row.value),
+  }));
+}
 
 type Flags = {
   edit: boolean;
@@ -151,6 +181,16 @@ function clickHref(href: string) {
   link.remove();
 }
 
+function blankPhuKien(soLuongCua = "1"): PhuKienDong {
+  return {
+    key: crypto.randomUUID(),
+    name: "",
+    unit: "bộ",
+    quantity: soLuongCua.trim() || "1",
+    unitPrice: "",
+  };
+}
+
 function blankLine(unit = "m2"): Line {
   return {
     key: crypto.randomUUID(),
@@ -164,15 +204,17 @@ function blankLine(unit = "m2"): Line {
     quantity: "1",
     areaOverride: "",
     mainUnitPrice: "",
+    accessories: [],
   };
 }
 
-/** Nhân đôi dòng — key mới, không giữ sourceItemId. */
+/** Nhân đôi dòng — key mới, không giữ sourceItemId; nhân đôi cả phụ kiện. */
 function cloneLine(source: Line): Line {
   return {
     ...source,
     key: crypto.randomUUID(),
     sourceItemId: null,
+    accessories: source.accessories.map((item) => ({ ...item, key: crypto.randomUUID() })),
   };
 }
 
@@ -189,6 +231,7 @@ function blankGroup(): Line {
     quantity: "",
     areaOverride: "",
     mainUnitPrice: "",
+    accessories: [],
   };
 }
 
@@ -206,6 +249,7 @@ function fromItem(item: EditorItem): Line {
       quantity: "",
       areaOverride: "",
       mainUnitPrice: "",
+      accessories: [],
     };
   }
   return {
@@ -220,6 +264,13 @@ function fromItem(item: EditorItem): Line {
     quantity: item.areaOverrideMilli != null ? "" : String(item.quantity),
     areaOverride: item.areaOverrideMilli != null ? formatAreaMilli(item.areaOverrideMilli) : "",
     mainUnitPrice: item.mainUnitPrice ? formatCount(item.mainUnitPrice) : "",
+    accessories: (item.accessories ?? []).map((pk) => ({
+      key: crypto.randomUUID(),
+      name: pk.name ?? "",
+      unit: pk.unit || "bộ",
+      quantity: String(pk.quantity || 0),
+      unitPrice: pk.unitPrice ? formatCount(pk.unitPrice) : "",
+    })),
   };
 }
 
@@ -255,6 +306,14 @@ function toInput(line: Line): ItemInput {
     quantity: hasOverride ? 0 : whole(line.quantity || "0", "Số lượng"),
     mainUnitPrice: money(line.mainUnitPrice),
     accessoryUnitPrice: 0,
+    accessories: line.accessories
+      .filter((pk) => pk.name.trim() || money(pk.unitPrice) > 0)
+      .map((pk) => ({
+        name: pk.name.trim(),
+        unit: pk.unit.trim() || "bộ",
+        quantity: whole(pk.quantity || "0", "Số lượng phụ kiện"),
+        unitPrice: money(pk.unitPrice),
+      })),
     areaOverride: hasOverride ? override : null,
   };
 }
@@ -266,6 +325,28 @@ function hienKhoiLuong(line: Line) {
   const q = line.quantity.trim() ? Number(line.quantity) : 0;
   if (!w || !h || !q || !Number.isFinite(w) || !Number.isFinite(h) || !Number.isFinite(q)) return "";
   return formatAreaMilli(areaFromSizeMilli(w, h, q));
+}
+
+/** Chuyển hạng mục cửa (cha) vào cuối một nhóm, hoặc chèn trước hạng mục khác. Phụ kiện đi theo dòng cha. */
+function chuyenHangMuc(lines: Line[], fromKey: string, targetKey: string) {
+  if (fromKey === targetKey) return lines;
+  const fromIdx = lines.findIndex((line) => line.key === fromKey && line.kind === "item");
+  if (fromIdx < 0) return lines;
+  const item = lines[fromIdx];
+  const without = [...lines.slice(0, fromIdx), ...lines.slice(fromIdx + 1)];
+  const target = without.find((line) => line.key === targetKey);
+  if (!target) return lines;
+
+  if (target.kind === "nhom") {
+    const gIdx = without.findIndex((line) => line.key === targetKey);
+    let end = gIdx + 1;
+    while (end < without.length && without[end].kind !== "nhom") end += 1;
+    return [...without.slice(0, end), item, ...without.slice(end)];
+  }
+
+  const tIdx = without.findIndex((line) => line.key === targetKey);
+  if (tIdx < 0) return lines;
+  return [...without.slice(0, tIdx), item, ...without.slice(tIdx)];
 }
 
 export function QuoteEditor({
@@ -299,6 +380,17 @@ export function QuoteEditor({
 }) {
   const router = useRouter();
   const [lines, setLines] = useState<Line[]>(version.items.length ? version.items.map(fromItem) : [blankLine()]);
+  // Mở sẵn khối phụ kiện nếu dòng đã có món.
+  const [moPhuKien, setMoPhuKien] = useState<Record<string, boolean>>(() => {
+    const map: Record<string, boolean> = {};
+    for (const item of version.items) {
+      if ((item.accessories?.length ?? 0) > 0) map[item.id] = true;
+    }
+    return map;
+  });
+  // Neo kéo hạng mục cửa (cha) — thả vào nhóm hoặc trước hạng mục khác.
+  const [keoHangMucKey, setKeoHangMucKey] = useState("");
+  const [neoThaKey, setNeoThaKey] = useState("");
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
   const rowHeightsRef = useRef(rowHeights);
   rowHeightsRef.current = rowHeights;
@@ -325,30 +417,22 @@ export function QuoteEditor({
   const [compare, setCompare] = useState<{ added: string[]; removed: string[]; changed: string[]; terms: string[]; delta: number } | null>(null);
   const [validityDays, setValidityDays] = useState(String(Math.max(dayCount(version.quoteDate, version.validUntil), 0)));
   const [meta, setMeta] = useState({
-    constructionTime: version.constructionTime,
-    internalNote: version.internalNote,
-    quoteNote: version.quoteNote ?? "",
+    quoteNote: stripChuaVatNote(version.quoteNote),
     taxPercent: taxSelectValue(version.taxBps),
     warrantyMonths: version.warrantyMonths ? String(version.warrantyMonths) : "",
-    advanceAmount: version.advanceAmount > 0 ? formatCount(version.advanceAmount) : "",
-    advanceDays: version.advanceAmount > 0 && version.advanceDays > 0 ? String(version.advanceDays) : "",
-    paymentDays: version.paymentDays ? String(version.paymentDays) : "",
   });
+  const [dotThanhToan, setDotThanhToan] = useState<DotThanhToan[]>(() => fromMilestones(version.paymentMilestones));
 
   // Đồng bộ lại khi đổi phiên bản — không đè form đang gõ của cùng một bản.
   useEffect(() => {
     setRevision(version.revision);
     setValidityDays(String(Math.max(dayCount(version.quoteDate, version.validUntil), 0)));
     setMeta({
-      constructionTime: version.constructionTime,
-      internalNote: version.internalNote,
-      quoteNote: version.quoteNote ?? "",
+      quoteNote: stripChuaVatNote(version.quoteNote),
       taxPercent: taxSelectValue(version.taxBps),
       warrantyMonths: version.warrantyMonths ? String(version.warrantyMonths) : "",
-      advanceAmount: version.advanceAmount > 0 ? formatCount(version.advanceAmount) : "",
-      advanceDays: version.advanceAmount > 0 && version.advanceDays > 0 ? String(version.advanceDays) : "",
-      paymentDays: version.paymentDays ? String(version.paymentDays) : "",
     });
+    setDotThanhToan(fromMilestones(version.paymentMilestones));
   }, [version.id]);
 
   useEffect(() => {
@@ -398,18 +482,30 @@ export function QuoteEditor({
     );
   }
 
+  // Các dòng đợt thanh toán — cập nhật theo bảng đợt đang gõ.
+  const mocThanhToan = useMemo(
+    () => dotThanhToan.map((row) => ({ content: row.content.trim(), value: row.value.trim() })),
+    [dotThanhToan],
+  );
+  const dongThanhToan = useMemo(() => paymentMilestoneLines(mocThanhToan), [mocThanhToan]);
+  const tongPhanTramTt = useMemo(() => tongPhanTramThanhToan(mocThanhToan), [mocThanhToan]);
+  const loiPhanTramTt = useMemo(() => loiTongPhanTramThanhToan(mocThanhToan), [mocThanhToan]);
+
   const priced = useMemo(() => {
     type Row = {
       line: Line;
       error: string;
+      /** Thành tiền cửa (không gồm phụ kiện). */
       money: number | null;
+      /** Tiền phụ kiện của dòng — cộng vào tổng nhóm / báo giá. */
+      tienPhuKien: number;
       areaMilli: number;
       method: string;
       stt: number | null;
     };
     const base: Row[] = lines.map((line) => {
       if (line.kind === "nhom") {
-        return { line, error: "", money: null, areaMilli: 0, method: "nhom", stt: null };
+        return { line, error: "", money: null, tienPhuKien: 0, areaMilli: 0, method: "nhom", stt: null };
       }
       const trong =
         !line.name.trim() &&
@@ -419,7 +515,7 @@ export function QuoteEditor({
         !line.areaOverride.trim() &&
         !line.mainUnitPrice.trim() &&
         (!line.quantity.trim() || line.quantity.trim() === "1");
-      if (trong) return { line, error: "", money: null, areaMilli: 0, method: "", stt: null };
+      if (trong) return { line, error: "", money: null, tienPhuKien: 0, areaMilli: 0, method: "", stt: null };
       try {
         const pricedLine = priceItem(toInput(line));
         const coTien =
@@ -430,7 +526,9 @@ export function QuoteEditor({
         return {
           line,
           error: "",
-          money: coTien ? pricedLine.pretax : null,
+          // Cột thành tiền hạng mục cửa tách khỏi phụ kiện.
+          money: coTien ? pricedLine.mainAmount : null,
+          tienPhuKien: coTien ? pricedLine.accessoryAmount : 0,
           areaMilli: coTien ? pricedLine.areaMilli : 0,
           method: pricedLine.calcMethod === "dien_tich" ? "m²" : "bộ",
           stt: null,
@@ -440,6 +538,7 @@ export function QuoteEditor({
           line,
           error: caught instanceof Error ? caught.message : "Dòng chưa hợp lệ.",
           money: null,
+          tienPhuKien: 0,
           areaMilli: 0,
           method: "",
           stt: null,
@@ -447,7 +546,7 @@ export function QuoteEditor({
       }
     });
 
-    // Gán STT cho dòng item; cộng khối lượng + thành tiền vào dòng nhóm phía trước.
+    // Gán STT cho dòng item; cộng khối lượng + thành tiền (cửa + PK) vào dòng nhóm phía trước.
     let stt = 0;
     const rows = base.map((row, index) => {
       if (row.line.kind === "nhom") {
@@ -456,9 +555,9 @@ export function QuoteEditor({
         let coCon = false;
         for (let i = index + 1; i < base.length; i += 1) {
           if (base[i].line.kind === "nhom") break;
-          if (base[i].money !== null) {
+          if (base[i].money !== null || base[i].tienPhuKien > 0) {
             coCon = true;
-            money += base[i].money ?? 0;
+            money += (base[i].money ?? 0) + base[i].tienPhuKien;
             areaMilli += base[i].areaMilli;
           }
         }
@@ -472,9 +571,9 @@ export function QuoteEditor({
       return { ...row, stt };
     });
 
-    // Tổng báo giá chỉ cộng dòng item — tránh cộng đôi với nhóm.
+    // Tổng báo giá = cửa + phụ kiện từng dòng item — tránh cộng đôi với nhóm.
     const pretax = rows.reduce(
-      (sum, row) => (row.line.kind === "nhom" ? sum : sum + (row.money ?? 0)),
+      (sum, row) => (row.line.kind === "nhom" ? sum : sum + (row.money ?? 0) + row.tienPhuKien),
       0,
     );
     try {
@@ -489,6 +588,55 @@ export function QuoteEditor({
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
   }
 
+  function patchPhuKien(lineKey: string, pkKey: string, patch: Partial<PhuKienDong>) {
+    setDirty(true);
+    setLines((current) =>
+      current.map((line) =>
+        line.key !== lineKey
+          ? line
+          : {
+              ...line,
+              accessories: line.accessories.map((pk) => (pk.key === pkKey ? { ...pk, ...patch } : pk)),
+            },
+      ),
+    );
+  }
+
+  function themPhuKien(lineKey: string) {
+    setDirty(true);
+    setMoPhuKien((current) => ({ ...current, [lineKey]: true }));
+    setLines((current) =>
+      current.map((line) =>
+        line.key !== lineKey
+          ? line
+          : { ...line, accessories: [...line.accessories, blankPhuKien(line.quantity || "1")] },
+      ),
+    );
+  }
+
+  function xoaPhuKien(lineKey: string, pkKey: string) {
+    setDirty(true);
+    setLines((current) =>
+      current.map((line) =>
+        line.key !== lineKey
+          ? line
+          : { ...line, accessories: line.accessories.filter((pk) => pk.key !== pkKey) },
+      ),
+    );
+  }
+
+  function thaHangMuc(targetKey: string) {
+    if (!keoHangMucKey || keoHangMucKey === targetKey) {
+      setKeoHangMucKey("");
+      setNeoThaKey("");
+      return;
+    }
+    setDirty(true);
+    setLines((current) => chuyenHangMuc(current, keoHangMucKey, targetKey));
+    setKeoHangMucKey("");
+    setNeoThaKey("");
+  }
+
   // Chèn bản sao ngay dưới dòng đang đứng (cách B).
   function duplicateLine(key: string) {
     setDirty(true);
@@ -496,7 +644,11 @@ export function QuoteEditor({
       const index = current.findIndex((line) => line.key === key);
       if (index < 0) return current;
       const next = [...current];
-      next.splice(index + 1, 0, cloneLine(current[index]));
+      const banSao = cloneLine(current[index]);
+      next.splice(index + 1, 0, banSao);
+      if (banSao.accessories.length) {
+        setMoPhuKien((map) => ({ ...map, [banSao.key]: true }));
+      }
       return next;
     });
   }
@@ -532,19 +684,14 @@ export function QuoteEditor({
     return {
       versionId: version.id,
       revision,
-      constructionTime: meta.constructionTime,
-      internalNote: meta.internalNote,
-      quoteNote: meta.quoteNote,
+      quoteNote: stripChuaVatNote(meta.quoteNote),
       // Server tự cộng ngày hiệu lực từ ngày báo giá — tránh lỗi lệch ngày client.
       validityDays: whole(validityDays || "0", "Số ngày hiệu lực"),
       taxPercent: meta.taxPercent === "chua" ? -1 : Number(meta.taxPercent || 0),
       warrantyMonths: meta.warrantyMonths.trim() ? whole(meta.warrantyMonths, "Số tháng bảo hành") : 0,
-      advanceAmount: money(meta.advanceAmount),
-      advanceDays:
-        money(meta.advanceAmount) > 0 && meta.advanceDays.trim()
-          ? whole(meta.advanceDays, "Số ngày tạm ứng")
-          : 0,
-      paymentDays: meta.paymentDays.trim() ? whole(meta.paymentDays, "Số ngày thanh toán sau nghiệm thu") : 0,
+      paymentMilestones: dotThanhToan
+        .filter((row) => row.content.trim() || row.value.trim())
+        .map((row) => ({ content: row.content.trim(), value: row.value.trim() })),
       items: lines
         .filter((line) => line.name.trim())
         .map((line) => {
@@ -554,6 +701,7 @@ export function QuoteEditor({
               quantity: 0,
               mainUnitPrice: 0,
               accessoryUnitPrice: 0,
+              accessories: [],
               sourceItemId: line.sourceItemId,
               positionCode: "",
               calcMethod: "nhom" as const,
@@ -570,6 +718,10 @@ export function QuoteEditor({
   }
 
   async function persist(currentRevision: number) {
+    const loiTt = loiTongPhanTramThanhToan(
+      dotThanhToan.map((row) => ({ content: row.content.trim(), value: row.value.trim() })),
+    );
+    if (loiTt) throw new Error(loiTt);
     const saved = await callApi<{ revision: number }>(`/api/bao-gia/${quoteId}`, {
       method: "PUT",
       body: JSON.stringify(payload(currentRevision)),
@@ -759,8 +911,6 @@ export function QuoteEditor({
           setMeta({
             ...meta,
             taxPercent,
-            // Chọn chưa VAT thì tự chèn dòng ghi chú; bỏ chọn thì gỡ dòng đó.
-            quoteNote: withChuaVatNote(meta.quoteNote, taxPercent === "chua"),
           });
         }}
       >
@@ -879,28 +1029,79 @@ export function QuoteEditor({
                 {priced.rows.map((row, index) => {
                   const hopCao = rowHeights[row.line.key] ? { height: rowHeights[row.line.key] } : undefined;
                   const laNhom = row.line.kind === "nhom";
+                  // Ưu tiên trạng thái mở/đóng tay; lần đầu có sẵn PK thì mở.
+                  const dangMoPk = flags.edit
+                    ? row.line.key in moPhuKien
+                      ? moPhuKien[row.line.key]
+                      : row.line.accessories.length > 0
+                    : row.line.accessories.length > 0;
                   return (
+                    <Fragment key={row.line.key}>
                     <tr
-                      key={row.line.key}
                       ref={(node) => {
                         rowRefs.current[row.line.key] = node;
                       }}
                       className={
-                        laNhom
-                          ? "relative border-t border-line bg-soft/70"
-                          : "relative border-t border-line/70"
+                        [
+                          laNhom ? "relative border-t border-line bg-soft/70" : "relative border-t border-line/70",
+                          keoHangMucKey === row.line.key ? "opacity-55" : "",
+                          keoHangMucKey &&
+                          neoThaKey === row.line.key &&
+                          keoHangMucKey !== row.line.key
+                            ? "ring-2 ring-inset ring-primary/40"
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")
+                      }
+                      onDragOver={
+                        flags.edit && keoHangMucKey && keoHangMucKey !== row.line.key
+                          ? (event) => {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = "move";
+                              setNeoThaKey(row.line.key);
+                            }
+                          : undefined
+                      }
+                      onDrop={
+                        flags.edit && keoHangMucKey && keoHangMucKey !== row.line.key
+                          ? (event) => {
+                              event.preventDefault();
+                              thaHangMuc(row.line.key);
+                            }
+                          : undefined
                       }
                     >
                       <td className="relative px-2 py-1.5 text-center align-top tabular-nums text-muted">
                         {/* Cùng padding/leading với ô nhập để STT thẳng hàng dòng value. */}
                         {laNhom ? (
                           <span className="block py-1.5 leading-5">&nbsp;</span>
+                        ) : flags.edit ? (
+                          <button
+                            type="button"
+                            draggable
+                            title="Kéo thả vào nhóm hoặc đổi thứ tự"
+                            aria-label={`Kéo hạng mục ${row.stt ?? index + 1}`}
+                            className={`${cell} inline-flex cursor-grab items-center justify-center gap-0.5 select-none text-muted hover:text-primary active:cursor-grabbing`}
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", row.line.key);
+                              setKeoHangMucKey(row.line.key);
+                            }}
+                            onDragEnd={() => {
+                              setKeoHangMucKey("");
+                              setNeoThaKey("");
+                            }}
+                          >
+                            <GripVertical className="size-3.5 shrink-0" aria-hidden />
+                            <span className="tabular-nums">{row.stt ?? ""}</span>
+                          </button>
                         ) : (
                           <span className={`${cell} inline-flex items-center justify-center text-muted`}>
                             {row.stt ?? ""}
                           </span>
                         )}
-                        {flags.edit ? (
+                        {flags.edit && !laNhom ? (
                           <div
                             role="separator"
                             aria-orientation="horizontal"
@@ -1066,6 +1267,22 @@ export function QuoteEditor({
                       {flags.edit ? (
                         <td className="px-1 py-1.5 text-center align-top">
                           <div className="inline-flex items-center justify-center gap-0.5">
+                            {!laNhom ? (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center px-1 text-xs font-semibold text-primary"
+                                title="Phụ kiện của dòng cửa"
+                                aria-label={`Phụ kiện dòng ${index + 1}`}
+                                onClick={() =>
+                                  setMoPhuKien((map) => ({
+                                    ...map,
+                                    [row.line.key]: !dangMoPk,
+                                  }))
+                                }
+                              >
+                                PK
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className="inline-flex h-8 items-center justify-center px-1 text-sm font-medium text-primary disabled:cursor-not-allowed disabled:opacity-35"
@@ -1094,6 +1311,121 @@ export function QuoteEditor({
                         </td>
                       ) : null}
                     </tr>
+                    {!laNhom && dangMoPk
+                      ? row.line.accessories.map((pk, pkIndex) => {
+                          const thanhTienPk = money(pk.unitPrice) * Number(pk.quantity || "0");
+                          return (
+                            <tr key={pk.key} className="border-t border-dashed border-line/50 bg-soft/30">
+                              <td className="px-2 py-1.5 align-top" />
+                              <td className="px-2 py-1.5 text-left align-top text-muted">
+                                <span className={`${cell} inline-flex items-center text-muted`}>↳</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-left align-top">
+                                <input
+                                  className={`${cell} text-left`}
+                                  value={pk.name}
+                                  disabled={!flags.edit}
+                                  placeholder="Khóa, bản lề…"
+                                  aria-label={`Tên phụ kiện ${pkIndex + 1}`}
+                                  onChange={(event) =>
+                                    patchPhuKien(row.line.key, pk.key, { name: event.target.value })
+                                  }
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 text-left align-top">
+                                <select
+                                  className={`${cell} text-left`}
+                                  value={pk.unit}
+                                  disabled={!flags.edit}
+                                  aria-label={`Đơn vị phụ kiện ${pkIndex + 1}`}
+                                  onChange={(event) =>
+                                    patchPhuKien(row.line.key, pk.key, { unit: event.target.value })
+                                  }
+                                >
+                                  {pk.unit && !isMeasureUnit(pk.unit) ? (
+                                    <option value={pk.unit}>{pk.unit}</option>
+                                  ) : null}
+                                  {measureUnits.map((unit) => (
+                                    <option key={unit} value={unit}>
+                                      {unit}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="px-2 py-1.5 align-top" />
+                              <td className="px-2 py-1.5 align-top" />
+                              <td className="px-2 py-1.5 text-right align-top">
+                                <input
+                                  className={`${cell} text-right tabular-nums`}
+                                  inputMode="numeric"
+                                  value={pk.quantity}
+                                  disabled={!flags.edit}
+                                  aria-label={`Số lượng phụ kiện ${pkIndex + 1}`}
+                                  onChange={(event) =>
+                                    patchPhuKien(row.line.key, pk.key, {
+                                      quantity: event.target.value.replace(/\D/g, ""),
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 align-top" />
+                              <td className="px-2 py-1.5 text-right align-top">
+                                <input
+                                  className={`${cell} text-right tabular-nums`}
+                                  inputMode="numeric"
+                                  value={pk.unitPrice}
+                                  disabled={!flags.edit}
+                                  placeholder="0"
+                                  aria-label={`Đơn giá phụ kiện ${pkIndex + 1}`}
+                                  onChange={(event) => {
+                                    const digits = digitsVnd(event.target.value);
+                                    patchPhuKien(row.line.key, pk.key, {
+                                      unitPrice: digits ? formatCount(Number(digits)) : "",
+                                    });
+                                  }}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 text-right align-top font-semibold tabular-nums leading-5 whitespace-nowrap">
+                                <span className="block py-1.5">
+                                  {thanhTienPk > 0 ? formatCount(thanhTienPk) : "—"}
+                                </span>
+                              </td>
+                              {flags.edit ? (
+                                <td className="px-1 py-1.5 text-center align-top">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center justify-center px-1 text-sm font-medium text-danger"
+                                    title="Xóa phụ kiện"
+                                    aria-label={`Xóa phụ kiện ${pkIndex + 1}`}
+                                    onClick={() => xoaPhuKien(row.line.key, pk.key)}
+                                  >
+                                    <Trash2 className="size-4" aria-hidden />
+                                  </button>
+                                </td>
+                              ) : null}
+                            </tr>
+                          );
+                        })
+                      : null}
+                    {!laNhom && dangMoPk && flags.edit ? (
+                      <tr className="border-t border-dashed border-line/40 bg-soft/20">
+                        <td className="px-2 py-1 align-middle" />
+                        <td className="px-2 py-1 align-middle" />
+                        <td className="px-2 py-1 align-middle" colSpan={8}>
+                          <button
+                            type="button"
+                            className="inline-flex h-8 items-center justify-center px-1 text-primary"
+                            title="Thêm phụ kiện"
+                            aria-label="Thêm phụ kiện"
+                            onClick={() => themPhuKien(row.line.key)}
+                          >
+                            <Plus className="size-4" aria-hidden />
+                          </button>
+                        </td>
+                        <td className="px-1 py-1" />
+                      </tr>
+                    ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -1106,22 +1438,15 @@ export function QuoteEditor({
                   </tr>
                 ) : null}
                 {priced.totals.retail ? (
-                  <>
-                    <tr className="border-t border-line bg-soft/60">
-                      <td colSpan={9} className="px-2 py-2.5 text-right text-sm font-semibold text-ink">
-                        Tổng cộng (trước thuế)
-                      </td>
-                      <td className="px-2 py-2.5 text-right text-sm font-semibold tabular-nums text-ink">
-                        {formatCount(priced.totals.pretax)}
-                      </td>
-                      {flags.edit ? <td /> : null}
-                    </tr>
-                    <tr>
-                      <td colSpan={flags.edit ? 11 : 10} className="px-2 pb-2.5 text-xs font-medium text-muted">
-                        Báo giá chưa bao gồm VAT
-                      </td>
-                    </tr>
-                  </>
+                  <tr className="border-t border-line bg-soft/60">
+                    <td colSpan={9} className="px-2 py-2.5 text-right text-sm font-semibold text-ink">
+                      Tổng cộng (trước thuế)
+                    </td>
+                    <td className="px-2 py-2.5 text-right text-sm font-semibold tabular-nums text-ink">
+                      {formatCount(priced.totals.pretax)}
+                    </td>
+                    {flags.edit ? <td /> : null}
+                  </tr>
                 ) : (
                   <>
                     <tr className="border-t border-line bg-soft/40">
@@ -1160,27 +1485,46 @@ export function QuoteEditor({
       </section>
 
       <section className="rounded-[18px] border border-line bg-white p-4">
-        <Field label="Ghi chú" hint="In ra khách ở mục Ghi chú trên bản báo giá.">
+        <Field
+          label="Ghi chú"
+          hint="Ô trên là ghi chú thêm; thanh toán / chưa VAT cố định nằm dưới."
+        >
           <textarea
-            className={`${inputClass} min-h-28 py-2`}
+            className={`${inputClass} min-h-14 py-2`}
             value={meta.quoteNote}
             disabled={!flags.edit}
-            placeholder="Nhập nội dung ghi chú gửi khách…"
-            rows={4}
+            placeholder="Ghi chú thêm gửi khách (không bắt buộc)…"
+            rows={2}
             onChange={(event) => {
               setDirty(true);
+              // Không strip lúc gõ — trim sẽ nuốt khoảng trắng đang nhập.
               setMeta({ ...meta, quoteNote: event.target.value });
             }}
           />
+          <div className="mt-2 space-y-1.5">
+            {dongThanhToan.length > 0 ? (
+              <div className="rounded-lg border border-line bg-soft/60 px-3 py-2 text-sm text-ink">
+                <p>- Thanh toán:</p>
+                <div className="mt-1 space-y-0.5 pl-[25px]">
+                  {dongThanhToan.map((dong, index) => (
+                    <p key={`tt-${index}`}>{dong}</p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {meta.taxPercent === "chua" ? (
+              <p className="rounded-lg border border-line bg-soft/60 px-3 py-2 text-sm text-ink">{CHUA_VAT_NOTE}</p>
+            ) : null}
+          </div>
         </Field>
       </section>
 
       <details className="rounded-[18px] border border-line bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold text-ink">Điều kiện thương mại</summary>
-        <p className="mt-1 text-xs text-muted">Các ô số trống hoặc 0 được hiểu là không áp dụng khi in. Điều khoản chữ sinh tự động khi lưu.</p>
+        <p className="mt-1 text-xs text-muted">Đợt thanh toán in ra khách. Hiệu lực / bảo hành để trống hoặc 0 thì không áp dụng.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <Field
-            label="Hiệu lực (số ngày)"
+            label="Hiệu lực báo giá (số ngày)"
             hint={
               /^\d+$/.test(validityDays.trim()) && Number(validityDays) > 0
                 ? `Đến hết ${formatYmd(addDays(version.quoteDate, Number(validityDays)))}`
@@ -1198,19 +1542,7 @@ export function QuoteEditor({
               }}
             />
           </Field>
-          <Field label="Thời gian thi công">
-            <input
-              className={inputClass}
-              value={meta.constructionTime}
-              disabled={!flags.edit}
-              placeholder="15 ngày kể từ ngày ký"
-              onChange={(event) => {
-                setDirty(true);
-                setMeta({ ...meta, constructionTime: event.target.value });
-              }}
-            />
-          </Field>
-          <Field label="Bảo hành (tháng)" hint="Để trống hoặc 0 thì in câu không áp dụng bảo hành.">
+          <Field label="Bảo hành kỹ thuật (tháng)" hint="Để trống hoặc 0 thì in câu không áp dụng bảo hành.">
             <input
               className={inputClass}
               inputMode="numeric"
@@ -1223,56 +1555,98 @@ export function QuoteEditor({
               }}
             />
           </Field>
-          <Field label="Tạm ứng (đồng)" hint="Để trống nếu không thu tạm ứng.">
-            <input
-              className={inputClass}
-              inputMode="numeric"
-              value={meta.advanceAmount}
-              disabled={!flags.edit}
-              placeholder="0"
-              onChange={(event) => {
-                setDirty(true);
-                setMeta({ ...meta, advanceAmount: digitsVnd(event.target.value) });
-              }}
-            />
-          </Field>
-          <Field label="Tạm ứng trong (ngày làm việc)" hint="Chỉ dùng khi có tiền tạm ứng.">
-            <input
-              className={inputClass}
-              inputMode="numeric"
-              value={meta.advanceDays}
-              disabled={!flags.edit || !meta.advanceAmount.trim()}
-              placeholder="3"
-              onChange={(event) => {
-                setDirty(true);
-                setMeta({ ...meta, advanceDays: event.target.value.replace(/\D/g, "").slice(0, 3) });
-              }}
-            />
-          </Field>
-          <Field label="Thanh toán sau nghiệm thu (ngày)">
-            <input
-              className={inputClass}
-              inputMode="numeric"
-              value={meta.paymentDays}
-              disabled={!flags.edit}
-              placeholder="7"
-              onChange={(event) => {
-                setDirty(true);
-                setMeta({ ...meta, paymentDays: event.target.value.replace(/\D/g, "").slice(0, 3) });
-              }}
-            />
-          </Field>
-          <Field label="Ghi chú nội bộ" hint="Không in ra khách.">
-            <input
-              className={inputClass}
-              value={meta.internalNote}
-              disabled={!flags.edit}
-              onChange={(event) => {
-                setDirty(true);
-                setMeta({ ...meta, internalNote: event.target.value });
-              }}
-            />
-          </Field>
+        </div>
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-ink">Thanh toán</p>
+            {flags.edit ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-primary"
+                onClick={() => {
+                  setDirty(true);
+                  setDotThanhToan((current) => [...current, blankDot()]);
+                }}
+              >
+                <Plus className="size-4" aria-hidden />
+                Thêm đợt
+              </button>
+            ) : null}
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-line">
+            <table className="w-full min-w-[560px] table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="bg-soft text-xs text-muted">
+                  <th className="w-14 px-2 py-2 text-center font-medium">STT</th>
+                  <th className="px-2 py-2 text-left font-medium">Nội dung</th>
+                  <th className="w-36 px-2 py-2 text-right font-medium">Giá trị thanh toán (%)</th>
+                  {flags.edit ? <th className="w-12 px-1 py-2" /> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {dotThanhToan.map((row, index) => (
+                  <tr key={row.key} className="border-t border-line/70">
+                    <td className="px-2 py-1.5 text-center tabular-nums text-muted">{index + 1}</td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        className={`${cell} text-left`}
+                        value={row.content}
+                        disabled={!flags.edit}
+                        placeholder="Tạm ứng, ngay sau khi ký kết hợp đồng…"
+                        aria-label={`Nội dung đợt ${index + 1}`}
+                        onChange={(event) => {
+                          setDirty(true);
+                          setDotThanhToan((current) =>
+                            current.map((item) =>
+                              item.key === row.key ? { ...item, content: event.target.value } : item,
+                            ),
+                          );
+                        }}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        className={`${cell} text-right tabular-nums`}
+                        inputMode="numeric"
+                        value={row.value}
+                        disabled={!flags.edit}
+                        placeholder="40"
+                        aria-label={`Giá trị đợt ${index + 1}`}
+                        onChange={(event) => {
+                          setDirty(true);
+                          const digits = event.target.value.replace(/\D/g, "").slice(0, 3);
+                          setDotThanhToan((current) =>
+                            current.map((item) =>
+                              item.key === row.key ? { ...item, value: digits } : item,
+                            ),
+                          );
+                        }}
+                      />
+                    </td>
+                    {flags.edit ? (
+                      <td className="px-1 py-1.5 text-center">
+                        <button
+                          type="button"
+                          className="inline-flex h-8 items-center justify-center px-1 text-danger"
+                          title="Xóa đợt"
+                          aria-label={`Xóa đợt ${index + 1}`}
+                          onClick={() => {
+                            setDirty(true);
+                            setDotThanhToan((current) => current.filter((item) => item.key !== row.key));
+                          }}
+                        >
+                          <Trash2 className="size-4" aria-hidden />
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className={`mt-2 text-xs ${loiPhanTramTt ? "font-medium text-danger" : "text-muted"}`}>
+            {loiPhanTramTt || `Tổng tỷ lệ thanh toán: ${tongPhanTramTt}%`}
+          </p>
         </div>
       </details>
 

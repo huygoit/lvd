@@ -297,7 +297,8 @@ export async function createFromQuotation(
           spec: item.spec || "",
           unit: item.unit || "bộ",
           quantityMilli,
-          unitPrice: item.calcMethod === "nhom" ? 0 : item.mainUnitPrice,
+          // QuotationItem.mainUnitPrice là BigInt — ProjectItem.unitPrice vẫn Int.
+          unitPrice: item.calcMethod === "nhom" ? 0 : Number(item.mainUnitPrice),
           ownerId: version.ownerId || user.id,
           note: item.note || (item.calcMethod === "nhom" ? "Nhóm từ báo giá" : `Từ báo giá ${version.quotationId}`),
         },

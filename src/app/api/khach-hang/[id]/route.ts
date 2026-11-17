@@ -57,7 +57,9 @@ export async function GET(_request: Request, context: Context) {
       })),
       quotations: row.quotations.map((item) => {
         const version = item.versions[0];
-        const pretax = version ? version.items.reduce((sum, line) => sum + line.pretax, 0) : 0;
+        const pretax = version
+          ? version.items.reduce((sum, line) => sum + Number(line.pretax), 0)
+          : 0;
         return {
           id: item.id,
           code: item.code,

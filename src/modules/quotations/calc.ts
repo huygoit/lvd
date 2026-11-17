@@ -2,6 +2,14 @@ import { AppError } from "@/shared/errors";
 
 export type CalcMethod = "bo" | "dien_tich";
 
+/** Một phụ kiện gắn dưới dòng cửa. */
+export type AccessoryInput = {
+  name?: string;
+  unit?: string;
+  quantity: number;
+  unitPrice: number;
+};
+
 export type ItemInput = {
   groupKey?: string;
   name: string;
@@ -10,8 +18,10 @@ export type ItemInput = {
   heightMm?: number | null;
   quantity: number;
   mainUnitPrice: number;
-  /** Giữ tương thích bản cũ — luôn 0 trên form mới. */
+  /** Giữ tương thích bản cũ — form mới ưu tiên danh sách accessories. */
   accessoryUnitPrice?: number;
+  /** Danh sách phụ kiện con; có mảng thì thành tiền PK = tổng SL × ĐG từng món. */
+  accessories?: AccessoryInput[];
   /** Khối lượng m² nhập tay; có giá trị thì không dùng rộng/cao. */
   areaOverride?: number | null;
 };
@@ -102,6 +112,18 @@ export function formatAreaMilli(milli: number) {
   return text;
 }
 
+/** Tổng tiền phụ kiện = Σ (số lượng × đơn giá). */
+export function sumAccessories(list: AccessoryInput[] | undefined) {
+  if (!list?.length) return 0;
+  let total = 0n;
+  for (const item of list) {
+    const quantity = nonNegativeInt(item.quantity, "Số lượng phụ kiện");
+    const unitPrice = nonNegativeInt(item.unitPrice, "Đơn giá phụ kiện");
+    total += BigInt(quantity) * BigInt(unitPrice);
+  }
+  return asMoney(total);
+}
+
 export function priceItem(input: ItemInput): PricedItem {
   // Nội dung bắt buộc lúc lưu; lúc gõ vẫn cho tính thành tiền để ô nhảy số ngay.
   const price = nonNegativeInt(input.mainUnitPrice, "Đơn giá");
@@ -112,16 +134,20 @@ export function priceItem(input: ItemInput): PricedItem {
     input.areaOverride === null || input.areaOverride === undefined
       ? null
       : areaToMilli(input.areaOverride);
+  const dungDanhSach = Array.isArray(input.accessories);
 
-  // Nhập khối lượng tay: thành tiền = khối lượng × đơn giá (không cần số lượng).
+  // Nhập khối lượng tay: thành tiền cửa = khối lượng × đơn giá (không cần số lượng).
   if (override !== null && override > 0) {
     const main = divRoundHalfUp(BigInt(override) * BigInt(price), 1000n);
+    const accessoryAmount = dungDanhSach
+      ? BigInt(sumAccessories(input.accessories))
+      : 0n;
     return {
       calcMethod: "dien_tich",
       areaMilli: override,
       mainAmount: asMoney(main),
-      accessoryAmount: 0,
-      pretax: asMoney(main),
+      accessoryAmount: asMoney(accessoryAmount),
+      pretax: asMoney(main + accessoryAmount),
     };
   }
 
@@ -133,7 +159,10 @@ export function priceItem(input: ItemInput): PricedItem {
     calcMethod = "dien_tich";
   }
 
-  const accessoryAmount = BigInt(accessory) * BigInt(quantity);
+  // Có danh sách PK thì cộng từng món; không thì giữ công thức cũ (đơn giá PK × số bộ cửa).
+  const accessoryAmount = dungDanhSach
+    ? BigInt(sumAccessories(input.accessories))
+    : BigInt(accessory) * BigInt(quantity);
   const main =
     calcMethod === "dien_tich"
       ? divRoundHalfUp(BigInt(areaMilli) * BigInt(price), 1000n)

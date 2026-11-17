@@ -37,7 +37,7 @@ async function Body({ searchParams }: { searchParams: Promise<Record<string, str
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-2xl font-semibold">Lập báo giá</h1>
-      <p className="text-sm text-muted">Chọn khách. Nếu chưa có công trình, nhập tên là đủ.</p>
+      <p className="text-sm text-muted">Chọn khách. Nếu chưa có công trình, nhập tên là đủ. Thuế VAT và hiệu lực lấy từ tiêu chuẩn báo giá.</p>
       <QuoteCreateForm
         customers={customers}
         projects={projects.map((item) => ({ id: item.id, customerId: item.customerId, code: item.code, name: item.name }))}

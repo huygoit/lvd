@@ -66,7 +66,7 @@ export async function datasetFromDatabase(now: Date): Promise<Dataset> {
         projectId: quote.projectId,
         customerId: quote.customerId,
         ownerId: version.ownerId,
-        valueBeforeTaxVnd: version.items.reduce((sum, item) => sum + item.pretax, 0),
+        valueBeforeTaxVnd: version.items.reduce((sum, item) => sum + Number(item.pretax), 0),
         createdOn: version.quoteDate,
         validUntil: version.validUntil,
         acceptedOn: version.customerStatus === "chap_thuan" ? version.acceptedOn : null,

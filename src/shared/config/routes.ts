@@ -21,6 +21,7 @@ export const routes = {
   companyProfile: "/cai-dat/ho-so-cong-ty",
   backup: "/cai-dat/sao-luu",
   quoteCategories: "/cai-dat/hang-muc",
+  quoteStandard: "/cai-dat/tieu-chuan-bao-gia",
   quoteTemplate: "/cai-dat/bieu-mau-bao-gia",
   jobTitles: "/cai-dat/chuc-danh",
   departments: "/cai-dat/phong-ban",

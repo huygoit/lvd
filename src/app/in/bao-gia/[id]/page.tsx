@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/shared/auth/session";
@@ -8,15 +8,19 @@ import { readVnd } from "@/shared/lib/vnd-words";
 import { rethrowPage } from "@/shared/page";
 import { areaFromSizeMilli, formatAreaMilli } from "@/modules/quotations/calc";
 import {
+  CHUA_VAT_NOTE,
   hieuLucHeader,
   labeledLine,
+  paymentMilestoneLines,
   pickText,
   placeAndDate,
   printCode,
+  stripChuaVatNote,
 } from "@/modules/quotations/document";
 import { PrintFooter } from "@/modules/quotations/print-button";
 import { getQuotation } from "@/modules/quotations/service";
 import { companyLogoDataUrl, companyParty } from "@/modules/settings/company-profile";
+import { getTieuChuanBaoGia } from "@/modules/settings/quote-standard";
 
 export const metadata: Metadata = { title: "Xem báo giá PDF" };
 
@@ -81,6 +85,9 @@ async function Body({
   const hieuLuc = hieuLucHeader(version.quoteDate, version.validUntil);
   // Snapshot trống (báo giá cũ) thì lấy từ hồ sơ khách / công ty để bản in đủ Đại diện, Chức vụ.
   const party = await companyParty();
+  // Lời chào: ưu tiên snapshot phiên bản; trống thì lấy cấu hình tiêu chuẩn báo giá.
+  const tieuChuan = await getTieuChuanBaoGia();
+  const loiChao = pickText(version.greeting, tieuChuan.greeting, "Xin gửi báo giá với thông tin như sau:");
   const tenCongTy = pickText(version.companyName, party.name) || "Công ty TNHH Liên Việt Door";
   const ctyDaiDien = pickText(version.representativeName, party.representativeName);
   const ctyChucVu = pickText(version.representativeTitle, party.representativeTitle);
@@ -92,7 +99,12 @@ async function Body({
   const dongKhachChucVu = labeledLine("Chức vụ", khachChucVu);
   const congTrinh = labeledLine("Công trình", version.projectName);
   const hangMuc = labeledLine("Hạng mục", version.title);
-  const ghiChu = String(version.quoteNote ?? "").trim();
+  const dongThanhToan = paymentMilestoneLines(
+    Array.isArray(version.paymentMilestones) ? version.paymentMilestones : [],
+  );
+  const ghiChuTay = stripChuaVatNote(version.quoteNote);
+  const coGhiChu =
+    dongThanhToan.length > 0 || version.totals.retail || Boolean(ghiChuTay);
   const spoken = version.totals.retail ? version.totals.pretax : version.totals.posttax;
   const words = version.totals.retail
     ? `Bằng chữ: ${readVnd(spoken)}.`
@@ -189,7 +201,7 @@ async function Body({
           {dongCtyDaiDien ? <p>{dongCtyDaiDien}</p> : null}
           {dongCtyChucVu ? <p>{dongCtyChucVu}</p> : null}
         </div>
-        <p className="mt-3 text-sm">Xin gửi báo giá với thông tin như sau:</p>
+        <p className="mt-3 whitespace-pre-line text-sm">{loiChao}</p>
         {congTrinh ? <p className="text-sm">{congTrinh}</p> : null}
         {hangMuc ? <p className="text-sm">{hangMuc}</p> : null}
         <table className="mt-3">
@@ -210,9 +222,10 @@ async function Body({
           <tbody>
             {(() => {
               let stt = 0;
-              return version.items.map((item) => {
+              const rows: ReactNode[] = [];
+              for (const item of version.items) {
                 if (item.calcMethod === "nhom") {
-                  return (
+                  rows.push(
                     <tr key={item.id} className="sum">
                       <td />
                       <td />
@@ -222,11 +235,14 @@ async function Body({
                       <td className="num">{khoiLuongIn(item)}</td>
                       <td />
                       <td className="num">{formatCount(item.pretax)}</td>
-                    </tr>
+                    </tr>,
                   );
+                  continue;
                 }
                 stt += 1;
-                return (
+                const phuKien = Array.isArray(item.accessories) ? item.accessories : [];
+                // Thành tiền hạng mục cửa tách khỏi phụ kiện (phụ kiện in dòng riêng).
+                rows.push(
                   <tr key={item.id}>
                     <td className="num">{stt}</td>
                     <td>{item.positionCode}</td>
@@ -237,10 +253,30 @@ async function Body({
                     <td className="num">{item.quantity ? formatCount(item.quantity) : ""}</td>
                     <td className="num">{khoiLuongIn(item)}</td>
                     <td className="num">{item.mainUnitPrice ? formatCount(item.mainUnitPrice) : ""}</td>
-                    <td className="num">{formatCount(item.pretax)}</td>
-                  </tr>
+                    <td className="num">{formatCount(item.mainAmount)}</td>
+                  </tr>,
                 );
-              });
+                phuKien.forEach((pk, pkIndex) => {
+                  const ten = String(pk.name ?? "").trim();
+                  if (!ten && !pk.quantity && !pk.unitPrice) return;
+                  const thanhTien = Number(pk.quantity || 0) * Number(pk.unitPrice || 0);
+                  rows.push(
+                    <tr key={`${item.id}-pk-${pkIndex}`}>
+                      <td />
+                      <td>↳</td>
+                      <td className="whitespace-pre-line">{ten}</td>
+                      <td>{String(pk.unit ?? "bộ")}</td>
+                      <td />
+                      <td />
+                      <td className="num">{pk.quantity ? formatCount(pk.quantity) : ""}</td>
+                      <td />
+                      <td className="num">{pk.unitPrice ? formatCount(pk.unitPrice) : ""}</td>
+                      <td className="num">{thanhTien ? formatCount(thanhTien) : ""}</td>
+                    </tr>,
+                  );
+                });
+              }
+              return rows;
             })()}
             {version.totals.retail ? (
               <tr className="sum">
@@ -270,10 +306,26 @@ async function Body({
           </tbody>
         </table>
         <p className="mt-3 text-right text-sm italic">{words}</p>
-        {ghiChu ? (
+        {version.warrantyMonths > 0 ? (
+          <p className="mt-3 text-sm">Bảo hành kỹ thuật: {version.warrantyMonths} tháng.</p>
+        ) : null}
+        {coGhiChu ? (
           <>
             <h2 className="mt-4 text-sm font-semibold">Ghi chú:</h2>
-            <p className="mt-1 whitespace-pre-line text-sm">{ghiChu}</p>
+            <div className="mt-1 space-y-1 text-sm">
+              {ghiChuTay ? <p className="whitespace-pre-line">{ghiChuTay}</p> : null}
+              {dongThanhToan.length > 0 ? (
+                <div>
+                  <p>- Thanh toán:</p>
+                  <div className="mt-0.5 space-y-0.5" style={{ paddingLeft: 25 }}>
+                    {dongThanhToan.map((dong, index) => (
+                      <p key={`tt-${index}`}>{dong}</p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {version.totals.retail ? <p>{CHUA_VAT_NOTE}</p> : null}
+            </div>
           </>
         ) : null}
         <div className="mt-10 grid grid-cols-2 text-center text-sm">

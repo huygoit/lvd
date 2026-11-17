@@ -4,7 +4,6 @@ import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { callApi } from "@/shared/client/api";
-import { nhanVatPercent, vatPercents } from "@/shared/catalog/vat";
 import { buttonPrimary, Field, inputClass } from "@/shared/components/controls";
 
 type Customer = { id: string; code: string; name: string };
@@ -26,8 +25,6 @@ export function QuoteCreateForm({
   const [project, setProject] = useState(projectId);
   const [projectName, setProjectName] = useState("");
   const [hangMuc, setHangMuc] = useState(() => projects.find((item) => item.id === projectId)?.name ?? "");
-  const [taxPercent, setTaxPercent] = useState("10");
-  const [validityDays, setValidityDays] = useState("15");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const related = useMemo(() => projects.filter((item) => item.customerId === customer), [projects, customer]);
@@ -48,6 +45,7 @@ export function QuoteCreateForm({
     setBusy(true);
     setError("");
     try {
+      // Thuế VAT + hiệu lực lấy từ tiêu chuẩn báo giá phía server.
       const created = await callApi<{ id: string }>("/api/bao-gia", {
         method: "POST",
         body: JSON.stringify({
@@ -56,8 +54,6 @@ export function QuoteCreateForm({
           projectName: String(form.get("projectName") ?? ""),
           location: String(form.get("location") ?? ""),
           title: hangMuc.trim(),
-          taxPercent: taxPercent === "chua" ? -1 : Number(taxPercent),
-          validityDays: Number(validityDays || 0),
         }),
       });
       router.push(`/bao-gia?mo=sua&id=${created.id}`);
@@ -140,27 +136,6 @@ export function QuoteCreateForm({
           onChange={(event) => setHangMuc(event.target.value)}
         />
       </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Thuế VAT">
-          <select className={inputClass} value={taxPercent} onChange={(event) => setTaxPercent(event.target.value)}>
-            <option value="chua">Báo giá chưa bao gồm VAT</option>
-            {vatPercents.map((muc) => (
-              <option key={muc} value={muc}>
-                {nhanVatPercent(muc)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Hiệu lực (ngày)" hint="Số ngày kể từ ngày tạo báo giá (ngày hôm nay).">
-          <input
-            className={inputClass}
-            inputMode="numeric"
-            value={validityDays}
-            placeholder="15"
-            onChange={(event) => setValidityDays(event.target.value.replace(/\D/g, "").slice(0, 4))}
-          />
-        </Field>
-      </div>
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       <button className={buttonPrimary} disabled={busy || !customer || !hangMuc.trim()}>
         Tạo báo giá
