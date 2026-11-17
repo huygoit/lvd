@@ -7,6 +7,7 @@ import {
   chuanDotThanhToan,
   defaultPaymentMilestones,
   loiTongPhanTramThanhToan,
+  stripChuaVatNote,
   type PaymentMilestone,
 } from "@/modules/quotations/document";
 import { taxRateBps, taxSelectValue } from "@/modules/quotations/calc";
@@ -16,6 +17,8 @@ const LOI_CHAO_MAC_DINH = "Xin gửi báo giá với thông tin như sau:";
 
 export type TieuChuanBaoGia = {
   greeting: string;
+  /** Ghi chú tay mặc định khi tạo báo giá mới. */
+  quoteNote: string;
   validityDays: number;
   warrantyMonths: number;
   /** "chua" | "0" | "5" | "8" | "10" */
@@ -35,6 +38,7 @@ export async function damBaoTieuChuanBaoGia() {
     data: {
       id: ID,
       greeting: LOI_CHAO_MAC_DINH,
+      quoteNote: "",
       validityDays: 15,
       warrantyMonths: 0,
       defaultTaxBps: 1000,
@@ -47,6 +51,7 @@ export async function getTieuChuanBaoGia(_user?: User): Promise<TieuChuanBaoGia>
   const row = await damBaoTieuChuanBaoGia();
   return {
     greeting: row.greeting.trim() || LOI_CHAO_MAC_DINH,
+    quoteNote: stripChuaVatNote(row.quoteNote),
     validityDays: Math.max(0, row.validityDays),
     warrantyMonths: Math.max(0, row.warrantyMonths),
     taxPercent: taxSelectValue(row.defaultTaxBps),
@@ -59,6 +64,7 @@ export async function getTieuChuanBaoGia(_user?: User): Promise<TieuChuanBaoGia>
 
 export async function saveTieuChuanBaoGia(user: User, input: {
   greeting?: unknown;
+  quoteNote?: unknown;
   validityDays?: unknown;
   warrantyMonths?: unknown;
   taxPercent?: unknown;
@@ -67,6 +73,7 @@ export async function saveTieuChuanBaoGia(user: User, input: {
   batBuoc(user);
   await damBaoTieuChuanBaoGia();
   const greeting = String(input.greeting ?? "").trim().slice(0, 500) || LOI_CHAO_MAC_DINH;
+  const quoteNote = stripChuaVatNote(String(input.quoteNote ?? "")).slice(0, 4000);
   const validityDays = Number(input.validityDays ?? 0);
   const warrantyMonths = Number(input.warrantyMonths ?? 0);
   if (!Number.isInteger(validityDays) || validityDays < 0 || validityDays > 9999) {
@@ -84,6 +91,7 @@ export async function saveTieuChuanBaoGia(user: User, input: {
     where: { id: ID },
     data: {
       greeting,
+      quoteNote,
       validityDays,
       warrantyMonths,
       defaultTaxBps,
@@ -91,7 +99,7 @@ export async function saveTieuChuanBaoGia(user: User, input: {
     },
   });
   await prisma.$transaction(async (tx) => {
-    await writeAudit(tx, user.id, "sua", "tieu_chuan_bao_gia", ID, "Cập nhật cấu hình tiêu chuẩn báo giá");
+    await writeAudit(tx, user.id, "sua", "tieu_chuan_bao_gia", ID, "Cập nhật cấu hình báo giá");
   });
   return getTieuChuanBaoGia(user);
 }

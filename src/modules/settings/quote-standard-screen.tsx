@@ -25,6 +25,7 @@ function fromDots(rows: { content: string; value: string }[]): Dot[] {
 
 export function QuoteStandardScreen({ initial }: { initial: TieuChuanBaoGia }) {
   const [greeting, setGreeting] = useState(initial.greeting);
+  const [quoteNote, setQuoteNote] = useState(initial.quoteNote);
   const [validityDays, setValidityDays] = useState(String(initial.validityDays));
   const [warrantyMonths, setWarrantyMonths] = useState(
     initial.warrantyMonths ? String(initial.warrantyMonths) : "",
@@ -51,6 +52,7 @@ export function QuoteStandardScreen({ initial }: { initial: TieuChuanBaoGia }) {
         method: "PUT",
         body: JSON.stringify({
           greeting,
+          quoteNote,
           validityDays: Number(validityDays || 0),
           warrantyMonths: Number(warrantyMonths || 0),
           taxPercent,
@@ -60,11 +62,12 @@ export function QuoteStandardScreen({ initial }: { initial: TieuChuanBaoGia }) {
         }),
       });
       setGreeting(saved.greeting);
+      setQuoteNote(saved.quoteNote);
       setValidityDays(String(saved.validityDays));
       setWarrantyMonths(saved.warrantyMonths ? String(saved.warrantyMonths) : "");
       setTaxPercent(saved.taxPercent);
       setDots(fromDots(saved.paymentMilestones));
-      setOk("Đã lưu cấu hình tiêu chuẩn báo giá.");
+      setOk("Đã lưu cấu hình báo giá.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không lưu được cấu hình.");
     } finally {
@@ -83,6 +86,20 @@ export function QuoteStandardScreen({ initial }: { initial: TieuChuanBaoGia }) {
           rows={3}
           placeholder="Xin gửi báo giá với thông tin như sau:"
           onChange={(event) => setGreeting(event.target.value)}
+        />
+      </section>
+
+      <section className="rounded-[18px] border border-line bg-white p-4 sm:p-5">
+        <h2 className="text-sm font-semibold text-ink">Ghi chú mặc định</h2>
+        <p className="mt-1 text-xs text-muted">
+          Nội dung nạp sẵn vào ô ghi chú khi tạo báo giá mới. Đợt thanh toán / VAT vẫn tự ghép riêng phía dưới.
+        </p>
+        <textarea
+          className={`${inputClass} mt-3 min-h-24 py-2`}
+          value={quoteNote}
+          rows={3}
+          placeholder="Ghi chú thêm gửi khách (không bắt buộc)…"
+          onChange={(event) => setQuoteNote(event.target.value)}
         />
       </section>
 
@@ -211,6 +228,7 @@ export function QuoteStandardScreen({ initial }: { initial: TieuChuanBaoGia }) {
           disabled={busy}
           onClick={() => {
             setGreeting(initial.greeting);
+            setQuoteNote(initial.quoteNote);
             setValidityDays(String(initial.validityDays));
             setWarrantyMonths(initial.warrantyMonths ? String(initial.warrantyMonths) : "");
             setTaxPercent(initial.taxPercent);

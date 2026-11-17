@@ -429,7 +429,7 @@ const groups: GroupDef[] = [
       },
       {
         id: "tieu-chuan-bao-gia",
-        label: "Tiêu chuẩn báo giá",
+        label: "Cấu hình báo giá",
         icon: "file-text",
         href: routes.quoteStandard,
         module: "system",

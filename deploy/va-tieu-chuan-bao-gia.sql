@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS "QuotationStandard" (
   "warrantyMonths" INTEGER NOT NULL DEFAULT 0,
   "defaultTaxBps" INTEGER NOT NULL DEFAULT 1000,
   "paymentMilestones" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "quoteNote" TEXT NOT NULL DEFAULT '',
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

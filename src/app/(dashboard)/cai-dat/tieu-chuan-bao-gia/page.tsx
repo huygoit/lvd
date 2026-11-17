@@ -9,7 +9,7 @@ import { rethrowPage } from "@/shared/page";
 import { QuoteStandardScreen } from "@/modules/settings/quote-standard-screen";
 import { getTieuChuanBaoGia } from "@/modules/settings/quote-standard";
 
-export const metadata: Metadata = { title: "Tiêu chuẩn báo giá" };
+export const metadata: Metadata = { title: "Cấu hình báo giá" };
 
 export default function Page() {
   return (
@@ -35,9 +35,9 @@ async function Content() {
         <Link href={routes.settings} className="text-sm font-medium text-primary">
           Cài đặt
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold text-ink">Tiêu chuẩn báo giá</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-ink">Cấu hình báo giá</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          Cấu hình lời chào, thuế VAT, hiệu lực, bảo hành và đợt thanh toán mặc định. Báo giá mới sẽ nạp sẵn các giá trị này.
+          Cấu hình lời chào, ghi chú, thuế VAT, hiệu lực, bảo hành và đợt thanh toán mặc định. Báo giá mới sẽ nạp sẵn các giá trị này.
         </p>
       </div>
       <QuoteStandardScreen initial={initial} />

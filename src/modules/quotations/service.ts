@@ -389,7 +389,8 @@ export async function createQuotation(
         warrantyTerms: commercial.warrantyTerms,
         deliveryTerms: commercial.deliveryTerms,
         ...snapshot(customer, project, profile),
-        quoteNote: "",
+        // Ghi chú tay lấy từ cấu hình báo giá (vẫn sửa được trên từng BG).
+        quoteNote: tieuChuan.quoteNote,
       },
     });
     await writeAudit(tx, user.id, "tao", "bao_gia", quotation.id, `Tạo ${quotation.code} phiên bản 1`);

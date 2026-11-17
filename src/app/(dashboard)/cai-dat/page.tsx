@@ -62,7 +62,7 @@ async function Content() {
             </TableRow>
             <TableRow>
               <TableCell>
-                <Link href={routes.quoteStandard} className="font-semibold text-primary">Tiêu chuẩn báo giá</Link>
+                <Link href={routes.quoteStandard} className="font-semibold text-primary">Cấu hình báo giá</Link>
               </TableCell>
               <TableCell className="whitespace-normal text-muted">Lời chào, thuế VAT, hiệu lực, bảo hành và đợt thanh toán mặc định khi tạo báo giá mới.</TableCell>
             </TableRow>

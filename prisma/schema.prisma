@@ -683,6 +683,8 @@ model QuotationStandard {
   defaultTaxBps     Int      @default(1000)
   // Đợt thanh toán mặc định: [{ content, value }] — value là số %.
   paymentMilestones Json     @default("[]")
+  // Ghi chú mặc định nạp vào báo giá mới (phần ghi chú tay gửi khách).
+  quoteNote         String   @default("")
   updatedAt         DateTime @default(now()) @updatedAt
 }
 
