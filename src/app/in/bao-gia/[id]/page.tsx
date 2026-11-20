@@ -83,18 +83,15 @@ async function Body({
   const draft = version.internalStatus !== "da_duyet";
   const author = version.authorName;
   const hieuLuc = hieuLucHeader(version.quoteDate, version.validUntil);
-  // Snapshot trống (báo giá cũ) thì lấy từ hồ sơ khách / công ty để bản in đủ Đại diện, Chức vụ.
+  // Snapshot trống (báo giá cũ) thì lấy từ hồ sơ công ty cho khối chữ ký.
   const party = await companyParty();
-  // Lời chào: ưu tiên snapshot phiên bản; trống thì lấy cấu hình tiêu chuẩn báo giá.
+  // Lời chào: ưu tiên snapshot phiên bản; trống thì lấy cấu hình báo giá.
   const tieuChuan = await getTieuChuanBaoGia();
   const loiChao = pickText(version.greeting, tieuChuan.greeting, "Xin gửi báo giá với thông tin như sau:");
-  const tenCongTy = pickText(version.companyName, party.name) || "Công ty TNHH Liên Việt Door";
   const ctyDaiDien = pickText(version.representativeName, party.representativeName);
   const ctyChucVu = pickText(version.representativeTitle, party.representativeTitle);
   const khachDaiDien = pickText(version.customerRepresentativeName, detail.customer.representativeName);
   const khachChucVu = pickText(version.customerRepresentativeTitle, detail.customer.representativeTitle);
-  const dongCtyDaiDien = labeledLine("Đại diện", ctyDaiDien);
-  const dongCtyChucVu = labeledLine("Chức vụ", ctyChucVu);
   const dongKhachDaiDien = labeledLine("Đại diện", khachDaiDien);
   const dongKhachChucVu = labeledLine("Chức vụ", khachChucVu);
   const congTrinh = labeledLine("Công trình", version.projectName);
@@ -195,11 +192,6 @@ async function Body({
           {version.customerAddress.trim() ? (
             <p className="col-span-2">Địa chỉ: {version.customerAddress}</p>
           ) : null}
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-0.5 text-sm leading-relaxed">
-          <p className="col-span-2 font-medium">{tenCongTy}</p>
-          {dongCtyDaiDien ? <p>{dongCtyDaiDien}</p> : null}
-          {dongCtyChucVu ? <p>{dongCtyChucVu}</p> : null}
         </div>
         <p className="mt-3 whitespace-pre-line text-sm">{loiChao}</p>
         {congTrinh ? <p className="text-sm">{congTrinh}</p> : null}

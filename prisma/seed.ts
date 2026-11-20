@@ -101,6 +101,39 @@ async function main() {
       data: { name, sortOrder: index + 1, active: true },
     });
   }
+  // Cấu hình báo giá mặc định (đồng bộ từ local).
+  await prisma.quotationStandard.upsert({
+    where: { id: "mac-dinh" },
+    update: {
+      greeting:
+        "Lời đầu tiên, Công ty TNHH Liên Việt Door xin gửi tới Quý khách lời chào trân trọng và lời cảm ơn vì đã quan tâm đến sản phẩm, dịch vụ của chúng tôi.\nTheo yêu cầu của Quý khách, chúng tôi xin gửi báo giá như sau:",
+      quoteNote:
+        "- Giá trên đã bao gồm chi phí lắp đặt và cước vận chuyển\n- Bảo hành theo tiêu chuẩn nhà sản xuất",
+      validityDays: 15,
+      warrantyMonths: 6,
+      defaultTaxBps: -1,
+      paymentMilestones: [
+        { content: "Tạm ứng, ngay sau khi ký kết hợp đồng", value: "40" },
+        { content: "Ngay khi tập kết vật tư xuống công trình", value: "30" },
+        { content: "Quyết toán còn lại", value: "30" },
+      ],
+    },
+    create: {
+      id: "mac-dinh",
+      greeting:
+        "Lời đầu tiên, Công ty TNHH Liên Việt Door xin gửi tới Quý khách lời chào trân trọng và lời cảm ơn vì đã quan tâm đến sản phẩm, dịch vụ của chúng tôi.\nTheo yêu cầu của Quý khách, chúng tôi xin gửi báo giá như sau:",
+      quoteNote:
+        "- Giá trên đã bao gồm chi phí lắp đặt và cước vận chuyển\n- Bảo hành theo tiêu chuẩn nhà sản xuất",
+      validityDays: 15,
+      warrantyMonths: 6,
+      defaultTaxBps: -1,
+      paymentMilestones: [
+        { content: "Tạm ứng, ngay sau khi ký kết hợp đồng", value: "40" },
+        { content: "Ngay khi tập kết vật tư xuống công trình", value: "30" },
+        { content: "Quyết toán còn lại", value: "30" },
+      ],
+    },
+  });
   await seedDefaultRoles(prisma);
   await seedDefaultAccounts(prisma);
 }
