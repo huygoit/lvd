@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, FileSignature, GripVertical, Mail, MessageCircle, Plus, Save, Trash2, X } from "lucide-react";
+import { Copy, FileSignature, GripVertical, Mail, MessageCircle, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as SuKienChuot } from "react";
 import Link from "next/link";
@@ -468,6 +468,33 @@ export function QuoteEditor({
   function flashNotice(text: string) {
     writeFlash(text);
     setNotice(text);
+  }
+
+  // Nạp hiệu lực / bảo hành / đợt thanh toán từ cấu hình báo giá.
+  async function napDieuKienTuCauHinh() {
+    setBusy(true);
+    setError("");
+    try {
+      const cfg = await callApi<{
+        validityDays: number;
+        warrantyMonths: number;
+        paymentMilestones: { content: string; value: string }[];
+      }>("/api/cai-dat/tieu-chuan-bao-gia");
+      setDirty(true);
+      setValidityDays(String(Math.max(0, cfg.validityDays)));
+      setMeta((current) => ({
+        ...current,
+        warrantyMonths: cfg.warrantyMonths ? String(cfg.warrantyMonths) : "",
+      }));
+      setDotThanhToan(
+        cfg.paymentMilestones.length ? fromMilestones(cfg.paymentMilestones) : [],
+      );
+      flashNotice("Đã cập nhật điều kiện thương mại từ cấu hình.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không tải được cấu hình báo giá.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function NoticeBanner() {
@@ -1521,7 +1548,21 @@ export function QuoteEditor({
 
       <details className="rounded-[18px] border border-line bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold text-ink">Điều kiện thương mại</summary>
-        <p className="mt-1 text-xs text-muted">Đợt thanh toán in ra khách. Hiệu lực / bảo hành để trống hoặc 0 thì không áp dụng.</p>
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-2">
+          <p className="text-xs text-muted">Đợt thanh toán in ra khách. Hiệu lực / bảo hành để trống hoặc 0 thì không áp dụng.</p>
+          {flags.edit ? (
+            <button
+              type="button"
+              className={`${buttonGhost} shrink-0 gap-1.5 px-2.5 py-1.5 text-sm`}
+              disabled={busy}
+              title="Nạp hiệu lực, bảo hành và đợt thanh toán từ cấu hình báo giá"
+              onClick={() => void napDieuKienTuCauHinh()}
+            >
+              <RefreshCw className={`size-3.5 ${busy ? "animate-spin" : ""}`} aria-hidden />
+              Cập nhật từ cấu hình
+            </button>
+          ) : null}
+        </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <Field
             label="Hiệu lực báo giá (số ngày)"

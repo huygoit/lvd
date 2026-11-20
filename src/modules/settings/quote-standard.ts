@@ -55,10 +55,8 @@ export async function getTieuChuanBaoGia(_user?: User): Promise<TieuChuanBaoGia>
     validityDays: Math.max(0, row.validityDays),
     warrantyMonths: Math.max(0, row.warrantyMonths),
     taxPercent: taxSelectValue(row.defaultTaxBps),
-    paymentMilestones: (() => {
-      const list = chuanDotThanhToan(row.paymentMilestones);
-      return list.length ? list : defaultPaymentMilestones();
-    })(),
+    // Trả đúng cấu hình đã lưu (kể cả rỗng) — không tự đổ lại mẫu mặc định.
+    paymentMilestones: chuanDotThanhToan(row.paymentMilestones),
   };
 }
 
