@@ -6,7 +6,7 @@ import { requireUser } from "@/shared/auth/session";
 import { rethrowPage } from "@/shared/page";
 import { customerOptions, listStaff } from "@/modules/customers/service";
 import { ProjectBoard } from "@/modules/projects/project-board";
-import { listProjects } from "@/modules/projects/service";
+import { listProjects, vatMacDinhCongTy } from "@/modules/projects/service";
 
 export const metadata: Metadata = { title: "Công trình" };
 
@@ -44,6 +44,7 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
   const canEditTransport = hasAnyCapability(user, ["transport.create", "transport.update", "projects.update", "projects.create"]);
   const staff = await listStaff();
   const names = new Map(staff.map((item) => [item.id, item.name]));
+  const defaultVatPercent = await vatMacDinhCongTy();
   let customers: Awaited<ReturnType<typeof customerOptions>> = [];
   if (canCreate || canEdit) {
     try {
@@ -67,6 +68,7 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
       staff={staff.map((item) => ({ id: item.id, name: item.name }))}
       customers={customers}
       defaultOwnerId={user.id}
+      defaultVatPercent={defaultVatPercent}
       initialMode={mode}
       initialId={hoSo}
       initialCustomerId={mode === "them" ? one(query.khach) : ""}

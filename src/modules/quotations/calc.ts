@@ -112,6 +112,25 @@ export function formatAreaMilli(milli: number) {
   return text;
 }
 
+/** Chuẩn hóa danh sách phụ kiện từ JSON / form. */
+export function normalizeAccessories(raw: unknown): AccessoryInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AccessoryInput[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const item = row as Record<string, unknown>;
+    const name = String(item.name ?? "").trim();
+    const unit = String(item.unit ?? "bộ").trim() || "bộ";
+    const quantity = Number(item.quantity ?? 0);
+    const unitPrice = Number(item.unitPrice ?? 0);
+    if (!name && !quantity && !unitPrice) continue;
+    if (!Number.isInteger(quantity) || quantity < 0) fail("Số lượng phụ kiện phải là số nguyên không âm.");
+    if (!Number.isInteger(unitPrice) || unitPrice < 0) fail("Đơn giá phụ kiện phải là số nguyên không âm.");
+    out.push({ name, unit, quantity, unitPrice });
+  }
+  return out;
+}
+
 /** Tổng tiền phụ kiện = Σ (số lượng × đơn giá). */
 export function sumAccessories(list: AccessoryInput[] | undefined) {
   if (!list?.length) return 0;

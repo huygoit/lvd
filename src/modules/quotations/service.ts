@@ -352,6 +352,7 @@ export async function createQuotation(
       const projectName = text(input.projectName);
       if (!projectName) throw new AppError("Nhập tên công trình hoặc chọn công trình có sẵn.", 400);
       assertAny(user, ["projects.create"]);
+      const { vatMacDinhCongTy } = await import("@/modules/projects/service");
       const project = await tx.project.create({
         data: {
           code: await nextCode(tx, "CT", now),
@@ -360,6 +361,8 @@ export async function createQuotation(
           location: text(input.location),
           ownerId: user.id,
           stage: "dang_bao_gia",
+          // Công trình mới từ báo giá: VAT lấy mặc định hồ sơ công ty.
+          vatPercent: await vatMacDinhCongTy(),
         },
       });
       projectId = project.id;

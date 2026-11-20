@@ -76,7 +76,11 @@ async function Content({ searchParams }: { searchParams: Promise<Record<string, 
                     </Link>
                   </TableCell>
                   <TableCell className="whitespace-normal font-medium">{row.name}</TableCell>
-                  <TableCell>{row.project.name}</TableCell>
+                  <TableCell className="whitespace-normal">
+                    <Link href={`/cong-trinh/${row.project.id}`} className="font-medium text-primary">
+                      {row.project.code} · {row.project.name}
+                    </Link>
+                  </TableCell>
                   <TableCell>{row.customer.name}</TableCell>
                   <TableCell>
                     {row.quotation ? (

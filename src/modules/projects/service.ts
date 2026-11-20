@@ -7,9 +7,21 @@ import { assertAny, assertOwn, listOwner } from "@/modules/system/access";
 import { nextCode } from "@/modules/system/codes";
 import { projectStageLabel } from "@/modules/customers/labels";
 import { xoaTep } from "@/modules/projects/document-store";
-import { isVatPercent, type VatPercent } from "@/shared/catalog/vat";
+import { canonVatPercent, isVatPercent, type VatPercent } from "@/shared/catalog/vat";
 
 const stages = Object.keys(projectStageLabel);
+const HO_SO_CONG_TY = "mac-dinh";
+
+/** VAT mặc định từ hồ sơ công ty (null nếu chưa cấu hình hợp lệ). */
+export async function vatMacDinhCongTy(): Promise<VatPercent | null> {
+  const row = await prisma.companyProfile.findUnique({
+    where: { id: HO_SO_CONG_TY },
+    select: { defaultTaxBps: true },
+  });
+  if (!row || row.defaultTaxBps < 0) return null;
+  const percent = row.defaultTaxBps / 100;
+  return isVatPercent(percent) ? percent : canonVatPercent(percent);
+}
 
 function cleanDate(value: string | undefined, label: string) {
   const text = (value ?? "").trim();
@@ -114,7 +126,8 @@ export async function createProject(user: User, input: ProjectInput, now = new D
   const staff = await prisma.staff.findFirst({ where: { id: input.ownerId, active: true } });
   if (!staff) throw new AppError("Người phụ trách không còn hoạt động.", 400);
   const dates = projectDates(input);
-  const vatPercent = cleanVat(input.vatPercent);
+  // Form để trống VAT → lấy thuế GTGT mặc định của công ty.
+  const vatPercent = cleanVat(input.vatPercent) ?? (await vatMacDinhCongTy());
   return prisma.$transaction(async (tx) => {
     const code = await nextCode(tx, "CT", now);
     const project = await tx.project.create({

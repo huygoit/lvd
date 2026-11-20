@@ -272,7 +272,8 @@ export async function createFromQuotation(
       });
     }
 
-    // Chuyển hạng mục báo giá → hạng mục công trình (nối tiếp STT hiện có).
+    // Chuyển hạng mục báo giá → hạng mục công trình (kèm kích thước + phụ kiện).
+    const { normalizeAccessories } = await import("@/modules/quotations/calc");
     const cuoi = await tx.projectItem.findFirst({
       where: { projectId: version.quotation.projectId },
       orderBy: { sortOrder: "desc" },
@@ -280,27 +281,36 @@ export async function createFromQuotation(
     });
     let sortOrder = (cuoi?.sortOrder ?? 0) + 1;
     for (const item of version.items) {
+      const laNhom = item.calcMethod === "nhom";
       let quantityMilli = 0;
-      if (item.areaOverrideMilli != null && item.areaOverrideMilli > 0) {
-        quantityMilli = item.areaOverrideMilli;
-      } else if (item.widthMm && item.heightMm && item.quantity) {
-        quantityMilli = areaFromSizeMilli(item.widthMm, item.heightMm, item.quantity);
-      } else if (item.quantity > 0) {
-        quantityMilli = item.quantity * 1000;
+      if (!laNhom) {
+        if (item.areaOverrideMilli != null && item.areaOverrideMilli > 0) {
+          quantityMilli = item.areaOverrideMilli;
+        } else if (item.widthMm && item.heightMm && item.quantity) {
+          quantityMilli = areaFromSizeMilli(item.widthMm, item.heightMm, item.quantity);
+        } else if (item.quantity > 0) {
+          quantityMilli = item.quantity * 1000;
+        }
       }
+      const accessories = laNhom ? [] : normalizeAccessories(item.accessories);
       await tx.projectItem.create({
         data: {
           projectId: version.quotation.projectId,
           sortOrder,
+          kind: laNhom ? "nhom" : "item",
           symbol: item.positionCode || "",
           name: item.name,
           spec: item.spec || "",
           unit: item.unit || "bộ",
+          widthMm: laNhom ? null : item.widthMm,
+          heightMm: laNhom ? null : item.heightMm,
+          quantity: laNhom ? 0 : item.quantity || 0,
           quantityMilli,
           // QuotationItem.mainUnitPrice là BigInt — ProjectItem.unitPrice vẫn Int.
-          unitPrice: item.calcMethod === "nhom" ? 0 : Number(item.mainUnitPrice),
+          unitPrice: laNhom ? 0 : Number(item.mainUnitPrice),
+          accessories,
           ownerId: version.ownerId || user.id,
-          note: item.note || (item.calcMethod === "nhom" ? "Nhóm từ báo giá" : `Từ báo giá ${version.quotationId}`),
+          note: item.note || (laNhom ? "Nhóm từ báo giá" : `Từ báo giá ${version.quotationId}`),
         },
       });
       sortOrder += 1;

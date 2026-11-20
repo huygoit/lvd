@@ -41,7 +41,7 @@ type Detail = ProjectDraft & {
   customerName: string;
 };
 
-const blank = (ownerId: string, customerId: string): ProjectDraft => ({
+const blank = (ownerId: string, customerId: string, vatPercent: number | null = null): ProjectDraft => ({
   id: "",
   customerId,
   name: "",
@@ -50,7 +50,7 @@ const blank = (ownerId: string, customerId: string): ProjectDraft => ({
   bidPackage: "",
   startedOn: "",
   endedOn: "",
-  vatPercent: null,
+  vatPercent,
   ownerId,
   note: "",
   stage: "dang_khao_sat",
@@ -72,6 +72,7 @@ export function ProjectBoard({
   staff,
   customers,
   defaultOwnerId,
+  defaultVatPercent = null,
   initialMode,
   initialId,
   initialCustomerId,
@@ -90,6 +91,8 @@ export function ProjectBoard({
   staff: { id: string; name: string }[];
   customers: Customer[];
   defaultOwnerId: string;
+  /** VAT mặc định từ hồ sơ công ty — prefill form tạo mới. */
+  defaultVatPercent?: number | null;
   initialMode: Mode | null;
   initialId: string;
   initialCustomerId: string;
@@ -272,7 +275,7 @@ export function ProjectBoard({
               mode="create"
               customers={customers}
               staff={staff}
-              initial={blank(defaultOwnerId, presetCustomer)}
+              initial={blank(defaultOwnerId, presetCustomer, defaultVatPercent)}
               canQuote={canQuote}
               onClose={() => open(null)}
               onSaved={saved}
@@ -328,9 +331,14 @@ export function ProjectBoard({
               <SheetFooter className="flex flex-wrap items-center justify-between gap-3 bg-white">
                 <div className="flex flex-wrap items-center gap-3">
                   {hangMuc && canEdit ? (
-                    <Button type="button" variant="outline" onClick={() => addLineRef.current?.add()}>
-                      <Plus className="size-4" aria-hidden /> Thêm dòng hạng mục
-                    </Button>
+                    <>
+                      <Button type="button" variant="outline" onClick={() => addLineRef.current?.addGroup()}>
+                        <Plus className="size-4" aria-hidden /> Thêm nhóm
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => addLineRef.current?.add()}>
+                        <Plus className="size-4" aria-hidden /> Thêm dòng
+                      </Button>
+                    </>
                   ) : null}
                 </div>
                 <div className="ml-auto flex flex-wrap justify-end gap-2">

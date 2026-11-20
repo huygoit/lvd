@@ -307,13 +307,22 @@ model ProjectItem {
   projectId     String
   project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sortOrder     Int
+  // item = cửa/hạng mục; nhom = dòng nhóm từ báo giá.
+  kind          String   @default("item")
   // Ký hiệu cửa/hạng mục trên báo giá (KH, Ký hiệu).
   symbol        String   @default("")
   name          String
   spec          String   @default("")
   unit          String
+  // Kích thước + số lượng bộ — giống báo giá.
+  widthMm       Int?
+  heightMm      Int?
+  quantity      Int      @default(0)
+  // Khối lượng m² ×1000 (tính từ R×C×SL hoặc nhập tay).
   quantityMilli Int      @default(0)
   unitPrice     Int      @default(0)
+  // Phụ kiện con: [{ name, unit, quantity, unitPrice }] — giống báo giá.
+  accessories   Json     @default("[]")
   ownerId       String
   note          String   @default("")
   createdAt     DateTime @default(now())

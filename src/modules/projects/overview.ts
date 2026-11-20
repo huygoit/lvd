@@ -3,7 +3,7 @@ import { prisma } from "@/shared/db";
 import { AppError } from "@/shared/errors";
 import { assertOwn } from "@/modules/system/access";
 import { costCategoryLabel, type CostCategory } from "@/modules/projects/cost-fields";
-import { hangMucAmount } from "@/modules/projects/item-fields";
+import { tongTienHangMuc } from "@/modules/projects/items";
 import { orderLinePayable, orderSurchargePayable } from "@/modules/projects/orders";
 import { tongChiPhiGiaCong } from "@/modules/fabrication/service";
 import { tongChiPhiVanChuyen } from "@/modules/transport/service";
@@ -40,7 +40,15 @@ export async function readProjectOverview(user: User, projectId: string): Promis
   const [hangMuc, chiPhi, donHang, chung, hoSo, tienGiaCong, tienVanChuyen] = await Promise.all([
     prisma.projectItem.findMany({
       where: { projectId },
-      select: { unitPrice: true, quantityMilli: true },
+      select: {
+        unitPrice: true,
+        quantityMilli: true,
+        quantity: true,
+        widthMm: true,
+        heightMm: true,
+        accessories: true,
+        kind: true,
+      },
     }),
     prisma.projectCost.findMany({
       where: { projectId },
@@ -88,7 +96,7 @@ export async function readProjectOverview(user: User, projectId: string): Promis
   const thay = thayChiPhiChung(user);
   const so = tinhSoTongQuan({
     vatPercent: project.vatPercent,
-    thanhTien: hangMuc.map((dong) => hangMucAmount(dong.unitPrice, dong.quantityMilli)),
+    thanhTien: [tongTienHangMuc(hangMuc)],
     tyLeChungBps: thay ? chung.map((dong) => dong.rateBps) : [],
     tienDonHang,
     tienCongTrinh: tienChi.reduce((tong, tien) => tong + tien, 0),

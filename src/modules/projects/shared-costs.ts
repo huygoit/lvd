@@ -2,7 +2,7 @@ import type { Capability, User } from "@/shared/auth/types";
 import { hasCapability } from "@/shared/auth/types";
 import { prisma } from "@/shared/db";
 import { AppError } from "@/shared/errors";
-import { hangMucAmount } from "@/modules/projects/item-fields";
+import { tongTienHangMuc } from "@/modules/projects/items";
 import { tinhSoTongQuan } from "@/modules/projects/overview-figures";
 import { writeAudit } from "@/modules/system/audit";
 import { assertOwn } from "@/modules/system/access";
@@ -61,11 +61,22 @@ function batBuoc(user: User, quyen: Capability) {
 async function doanhThuTruocThue(projectId: string) {
   const [project, lines] = await Promise.all([
     prisma.project.findUnique({ where: { id: projectId }, select: { vatPercent: true } }),
-    prisma.projectItem.findMany({ where: { projectId }, select: { unitPrice: true, quantityMilli: true } }),
+    prisma.projectItem.findMany({
+      where: { projectId },
+      select: {
+        unitPrice: true,
+        quantityMilli: true,
+        quantity: true,
+        widthMm: true,
+        heightMm: true,
+        accessories: true,
+        kind: true,
+      },
+    }),
   ]);
   return tinhSoTongQuan({
     vatPercent: project?.vatPercent ?? null,
-    thanhTien: lines.map((dong) => hangMucAmount(dong.unitPrice, dong.quantityMilli)),
+    thanhTien: [tongTienHangMuc(lines)],
     tyLeChungBps: [],
     tienDonHang: 0,
     tienCongTrinh: 0,

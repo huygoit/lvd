@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { cn } from "@/shared/lib/cn";
 import { ProjectFinanceOverview } from "@/modules/projects/project-finance-overview";
 import { ProjectItems, type HangMucActions } from "@/modules/projects/project-items";
@@ -79,11 +79,11 @@ export function ProjectOverview({
 }) {
   const [tab, setTab] = useState<Tab>("Tổng quan");
   const hangMuc = tab === "Hạng mục";
-  const reported = useRef(hangMuc);
-  if (reported.current !== hangMuc) {
-    reported.current = hangMuc;
+
+  // Báo cho board biết tab Hạng mục — chỉ trong effect, tránh setState lúc render.
+  useEffect(() => {
     onHangMuc(hangMuc);
-  }
+  }, [hangMuc, onHangMuc]);
 
   useEffect(() => () => onHangMuc(false), [onHangMuc]);
 
